@@ -60,6 +60,17 @@ header.top{position:sticky;top:env(safe-area-inset-top, 0px);z-index:5;backgroun
 .row.bk small{font-size:.8rem}
 .bkin{display:flex;align-items:center;gap:4px;flex:none}
 .bkin input[type=number]{width:88px;flex:none;padding:6px 8px;font-size:1rem;text-align:right}
+.folds{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+details.fold{border-top:0;border-bottom:1px solid var(--line);padding:0}
+details.fold > summary{display:flex;flex-direction:column;align-items:flex-start;text-align:left;gap:2px;padding:14px 32px 14px 0;color:var(--ink);position:relative}
+details.fold > summary::before{content:"";display:none}
+details.fold > summary::after{content:"";position:absolute;right:6px;top:50%;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:translateY(-70%) rotate(45deg)}
+@media (prefers-reduced-motion: no-preference){ details.fold > summary::after{transition:transform .15s} }
+details.fold[open] > summary::after{transform:translateY(-30%) rotate(225deg)}
+.ft{font-family:var(--display);font-weight:800;font-size:1.15rem}
+.fs{font-weight:400;font-size:.92rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.fb{display:flex;flex-direction:column;gap:12px;padding-bottom:18px}
+.fb h3{margin-top:6px}
 .callout{background:var(--gap-soft);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:.95rem;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .banner button{flex:none}
@@ -783,6 +794,7 @@ function paydayPlan(s, c, steps){
   return {P, lines, leftPer, savePer, ppy};
 }
 
+const OPEN = new Set();
 const BUCKETS = [
   ["repairs","Car repairs and upkeep","Tires, brakes, inspection"],
   ["gifts","Holidays, birthdays, school costs",""],
@@ -810,6 +822,7 @@ function bucketOut(){
     msg += `<p class="small muted">Even half helps. Every dollar set aside is a dollar not borrowed at credit card rates.</p>`;
   }
   const out = $("bk-out"); if(out) out.innerHTML = msg;
+  const sum = $("bk-sum"); if(sum) sum.textContent = total>0 ? money(per)+" a paycheck" : "Not set up yet";
 }
 
 /* ===== render plan ===== */
@@ -834,7 +847,7 @@ function render(){
       ${c.extraNet>0?`<div class="row"><span class="muted">Extra shifts, after tax (not counted above)</span><span class="muted">+${money(c.extraNet)}</span></div>`:""}
     </div>
     ${c.estimated?`<p class="small muted">Take-home is estimated${c.m.prem>0?"":" and doesn't include health premiums"}. For a better number, add your real paycheck amount in My numbers.</p>`:""}
-    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The other ${money(c.left-c.actualSave)} goes to everyday spending beyond must-pay bills. That's normal. The steps below only work if your step's money moves first, on payday, before it gets spent.</p><p class="small">Your payday plan below starts with what you save now plus half of the rest, and puts it in order.</p></div>` : ""}
+    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The difference gets spent. The payday plan below moves money first, before it can be.</p></div>` : ""}
     ${(!neg && !c.saveKnown) ? `<p class="small muted">How much does your savings actually grow each month? Add it in My numbers. It's the best check on whether this money is really available.</p>` : ""}
   </section>`);
 
@@ -867,6 +880,7 @@ function render(){
   </section>`);
 
   // progress
+  h.push(`<div class="folds">`);
   const sub = {
     number: neg? `${money(-c.left)} a month short` : `${money(c.left)} a month to work with`,
     cushion: `${money(Math.min(c.cash,c.cushionTarget))} of ${money(c.cushionTarget)}`,
@@ -878,12 +892,13 @@ function render(){
     goals: "Car, home, education"
   };
   const chip = {done:'<span class="chip done">Done</span>', now:'<span class="chip now">Now</span>', todo:'<span class="chip">Later</span>', skip:'<span class="chip skip">Not needed</span>'};
-  h.push(`<section aria-labelledby="h-prog"><h2 id="h-prog">Your progress</h2>
+  h.push(`<details class="fold" data-fold="prog"><summary><span class="ft" id="h-prog">Your progress</span><span class="fs">Step ${cur.n} of ${steps.length}: ${TITLES[cur.id]}</span></summary><div class="fb">
     <ol class="steps">${steps.map(x=>`<li class="${x.status}"><span class="n">${x.status==="done"?"✓":x.n}</span><span class="t">${TITLES[x.id]}<small class="num">${esc(sub[x.id])}</small></span>${chip[x.status]}</li>`).join("")}</ol>
-  </section>`);
+  </div></details>`);
 
   // costs you know are coming
-  h.push(`<section aria-labelledby="h-bk"><h2 id="h-bk">Costs you know are coming</h2>
+  const bkPer = BUCKETS.reduce((a,[k])=>a+n((s.buckets||{})[k]),0)/(n(s.freq)||26);
+  h.push(`<details class="fold" data-fold="bk"><summary><span class="ft" id="h-bk">Costs you know are coming</span><span class="fs"><span id="bk-sum">${bkPer>0?money(bkPer)+" a paycheck":"Not set up yet"}</span></span></summary><div class="fb">
     <p>Car repairs, holidays, vacations and the next car aren't emergencies. They're bills that come once a year instead of once a month. Setting a little aside each payday keeps them off a credit card.</p>
     <div class="rows" id="bk-rows"><div class="row small muted"><span>What it costs</span><span>Per year</span></div>${BUCKETS.map(([k,l,hint])=>`<label class="row bk"><span>${l}<small class="muted">${hint}</small></span><span class="bkin">$<input type="number" inputmode="decimal" min="0" id="bk-${k}" data-bk="${k}" value="${n((s.buckets||{})[k])||""}" placeholder="0" aria-label="${l}, per year"></span></label>`).join("")}</div>
     <div id="bk-out"></div>
@@ -894,7 +909,7 @@ function render(){
       <li>Keep using a card for points or protection, but pay it off in full that month from the bucket.</li>
       <li>When a debt is paid off or a raise comes, send that money to the buckets you haven't funded yet.</li>
     </ul></details>
-  </section>`);
+  </div></details>`);
 
   // retirement picture
   const gross = c.retIncome, total = c.retNet;
@@ -917,7 +932,7 @@ function render(){
       ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
       <div class="row total"><span>Spending at 67</span><span>${money(c.need)}</span></div>
     </div>`;
-  h.push(`<section aria-labelledby="h-ret"><h2 id="h-ret">Your retirement picture</h2>
+  h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${c.short<=0 ? `Covered, ${money(total-c.need)} a month to spare` : `About ${money(c.short)} a month short`}</span></summary><div class="fb">
     <p>At 67, in today's dollars, ${who} would have about:</p>
     <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
     <div style="position:relative;padding-top:18px">
@@ -937,7 +952,7 @@ function render(){
     <details><summary>How spending at 67 is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Add Medicare premiums and other medical costs, about $200 to $400 a month per person, if you spend less on health care now. You can enter your own number in My numbers.</p></div></details>
     <p>Each 1% more of your pay saved adds about <b class="num">${money(c.perPctNet)} a month</b> after tax at 67.</p>
     <p class="small muted">Social Security is a rough estimate from pay and years worked${c.p.ssEstimated?", for both of you":""}; ${c.married?"a spouse gets at least half the other's benefit. ":""}see real numbers at ssa.gov/myaccount. Savings assume ${Math.round(RULES.realReturn*100)}% growth a year after inflation and ${Math.round(RULES.drawRate*100)}% taken out each year. Taxes use today's federal and New Jersey rules; New Jersey doesn't tax Social Security.${s.roth==="roth"?" Your Roth savings come out tax-free.":""} Everyone is counted at their own age 67.</p>
-  </section>`);
+  </div></details>`);
 
   // also on your list
   const kidsN = n(s.kids), oldest = n(s.kidOldest);
@@ -951,12 +966,12 @@ function render(){
   }
   if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more (2026 limits). Useful once the earlier steps are done.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
-  h.push(`<section aria-labelledby="h-also"><h2 id="h-also">Also on your list</h2><ul class="plain">${also.map(x=>`<li>${x}</li>`).join("")}</ul></section>`);
+
 
   // choosing investments
   const tdYear = Math.round((RULES.year + Math.max(0, 67-n(s.age)))/5)*5;
   const hasPension = n(s.pension)>0 || (c.partner && n(s.pPension)>0);
-  h.push(`<section aria-labelledby="h-inv"><h2 id="h-inv">Choosing investments</h2>
+  h.push(`<details class="fold" data-fold="inv"><summary><span class="ft" id="h-inv">Choosing investments</span><span class="fs">Low-cost funds, one pot</span></summary><div class="fb">
     <p>General guidance, not a pick for your plan. Every employer's fund list is different.</p>
     <ul class="plain">
       <li><b>Treat all your retirement accounts as one pot.</b> Your work plan, any IRA, and a spouse's accounts add up to one mix of stocks and bonds. Decide the mix for the whole pot, not account by account.</li>
@@ -967,7 +982,7 @@ function render(){
       <li><b>Read fund names closely.</b> At Fidelity, "Freedom Index" funds cost about 0.12% a year; plain "Freedom" funds cost about 0.65% or more. Vanguard Target Retirement and Schwab Target Index funds are also low-cost.</li>
       <li><b>Be careful with annuity options</b> and "guaranteed" accounts inside a 403(b). Fees are often high and money can be hard to move. Don't switch because a salesperson suggests it.</li>
       <li><b>Look once a year,</b> rebalance if your mix has drifted, and don't change course because of the news.</li>
-    </ul></section>`);
+    </ul></div></details>`);
 
   // money on the table
   const table = [];
@@ -982,29 +997,32 @@ function render(){
   const anch = (tiers.find(([top])=>hhInc<=top)||[0,0])[1];
   if(anch>0) table.push(`New Jersey's ANCHOR property tax benefit for ${s.housing==="own"?"homeowners":"renters"}: about <b class="num">${money(anch)}</b> a year. Apply every year at nj.gov/anchor.`);
   table.push("Phone and car insurance: shopping these once a year often saves $30 to $100 a month.");
-  h.push(`<section aria-labelledby="h-table"><h2 id="h-table">Money you may be leaving on the table</h2><ul class="plain">${table.map(x=>`<li>${x}</li>`).join("")}</ul></section>`);
+  const invHtml = h.pop();
+  h.push(`<details class="fold" data-fold="more"><summary><span class="ft" id="h-more">More to check</span><span class="fs">${also.length+table.length} things for your situation</span></summary><div class="fb"><h3>Money you may be leaving on the table</h3><ul class="plain">${table.map(x=>`<li>${x}</li>`).join("")}</ul><h3>Protect your household</h3><ul class="plain">${also.map(x=>`<li>${x}</li>`).join("")}</ul></div></details>`);
+  h.push(invHtml);
 
   // traps
-  h.push(`<section aria-labelledby="h-traps"><h2 id="h-traps">Watch out for</h2>
-    <details><summary>Six common money traps</summary><ul class="how">
+  h.push(`<details class="fold" data-fold="traps"><summary><span class="ft" id="h-traps">Watch out for</span><span class="fs">Six common money traps</span></summary><div class="fb"><ul class="how">
       <li><b>Payday and title loans.</b> Fees work out to hundreds of percent a year. Payday loans are illegal in New Jersey.</li>
       <li><b>Borrowing from or cashing out your 403(b) or 401(k).</b> Cashing out costs taxes plus a 10% penalty, and a loan comes due fast if you leave your job.</li>
       <li><b>Rent-to-own stores.</b> You often pay two or three times the price.</li>
       <li><b>Refund-advance loans and paid preparers.</b> Free filing gets you the same refund.</li>
       <li><b>Debt-settlement companies</b> that charge fees before settling anything. Use a nonprofit counselor instead.</li>
       <li><b>"Advisors" selling annuities or whole life insurance</b> to people with small savings. The commissions are high and the money is hard to get out.</li>
-    </ul></details></section>`);
+    </ul></div></details>`);
 
   // help
-  h.push(`<section aria-labelledby="h-help"><h2 id="h-help">Free help you can trust</h2><div class="links">
+  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help you can trust</span><span class="fs">Tax help, 211, credit counseling</span></summary><div class="fb"><div class="links">
     <a href="https://www.irs.gov/individuals/free-tax-return-preparation-for-qualifying-taxpayers" target="_blank" rel="noopener">Free tax preparation (IRS VITA)<small>Volunteers file your return at no cost</small></a>
     <a href="https://www.nj211.org" target="_blank" rel="noopener">NJ 211<small>Help with rent, utilities, food and childcare. Or dial 211.</small></a>
     <a href="https://www.nfcc.org" target="_blank" rel="noopener">Nonprofit credit counseling (NFCC)<small>Lower rates and a payoff plan, no new loan</small></a>
     <a href="https://www.consumerfinance.gov" target="_blank" rel="noopener">Consumer Financial Protection Bureau<small>Free tools and a place to file complaints</small></a>
     <a href="https://www.ssa.gov/myaccount/" target="_blank" rel="noopener">Your Social Security estimate<small>Your real number, from your real earnings</small></a>
-  </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p></section>`);
+  </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p></div></details>`);
+  h.push(`</div>`);
 
   $("view-plan").innerHTML = h.join("");
+  document.querySelectorAll("#view-plan details.fold").forEach(d=>{ if(OPEN.has(d.dataset.fold)) d.open = true; d.addEventListener("toggle", ()=>{ d.open ? OPEN.add(d.dataset.fold) : OPEN.delete(d.dataset.fold); }); });
   const td = $("tax-done"); if(td) td.onclick = ()=>{ S.taxDone=true; S.example=false; save(); render(); window.scrollTo({top:0}); };
   document.querySelectorAll('[data-go="form"]').forEach(b=>b.onclick=()=>show("form"));
   bucketOut();
