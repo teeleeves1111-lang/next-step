@@ -55,6 +55,7 @@ header.top{position:sticky;top:env(safe-area-inset-top, 0px);z-index:5;backgroun
 .tabs button{border:0;background:transparent;color:var(--ink);font:inherit;font-size:.92rem;font-weight:700;padding:8px 14px;border-radius:999px;cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 
+.callout{background:var(--gap-soft);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:.95rem;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .banner button{flex:none}
 
@@ -100,13 +101,13 @@ ol.steps li .t small{display:block;color:var(--muted);font-size:.84rem}
 
 .stack{display:flex;height:22px;border-radius:6px;overflow:hidden;background:var(--chip)}
 .stack i{display:block;height:100%}
-.stack .ss{background:var(--accent)} .stack .sv{background:var(--gap)} .stack .pn{background:var(--pen)}
+.stack .ss{background:var(--accent)} .stack .sv{background:var(--gap)} .stack .pn{background:var(--pen)} .stack .tx{background:repeating-linear-gradient(135deg,var(--muted) 0 3px,transparent 3px 7px);opacity:.6}
 .need{position:absolute;top:0;bottom:-4px;width:0;border-left:2px dashed var(--ink)}
 .need span{position:absolute;top:-2px;left:4px;font-size:.78rem;font-weight:700;white-space:nowrap;font-variant-numeric:tabular-nums}
 .need.r span{left:auto;right:4px}
 .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:.88rem}
 .legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:0}
-.legend .l1::before{background:var(--accent)} .legend .l2::before{background:var(--gap)} .legend .l3::before{background:var(--pen)}
+.legend .l1::before{background:var(--accent)} .legend .l2::before{background:var(--gap)} .legend .l3::before{background:var(--pen)} .legend .l4::before{background:repeating-linear-gradient(135deg,var(--muted) 0 2px,transparent 2px 4px)}
 
 ul.plain{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
 .links{display:flex;flex-direction:column;gap:2px}
@@ -129,6 +130,8 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .seg span{display:block;padding:9px 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--surface);font-size:.95rem;cursor:pointer}
 .seg input:checked + span{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .seg input:focus-visible + span{outline:3px solid var(--accent);outline-offset:2px}
+.chk{display:flex;gap:10px;align-items:center;font-weight:700;font-size:.95rem;cursor:pointer}
+.chk input{width:22px;height:22px;accent-color:var(--accent);flex:none}
 .debt{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;border:1.5px solid var(--line);border-radius:12px;background:var(--surface)}
 .debt .full{grid-column:1 / -1}
 .btn{font:inherit;font-weight:700;border-radius:999px;padding:11px 18px;border:1.5px solid var(--ink);background:transparent;color:var(--ink);cursor:pointer}
@@ -169,6 +172,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
           <label class="f">Children under 17<input id="kids" type="number" inputmode="numeric" min="0" max="10"></label>
           <label class="f" id="wrap-kids6">How many under 6<input id="kids6" type="number" inputmode="numeric" min="0" max="10"></label>
         </div>
+        <label class="f" id="wrap-oldest">Oldest child's age<small>For college timing.</small><input id="kidOldest" type="number" inputmode="numeric" min="0" max="30"></label>
         <label class="f" id="wrap-spouse">Spouse's yearly pay before taxes<small>Leave 0 if they don't work.</small><input id="spouse" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
@@ -186,7 +190,8 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
         <label class="f">How often you're paid
           <select id="freq"><option value="52">Every week</option><option value="26">Every two weeks</option><option value="24">Twice a month</option><option value="12">Once a month</option></select>
         </label>
-        <label class="f">Take-home per paycheck<small>The amount that lands in your bank on a normal paycheck. Leave blank and we'll estimate it.</small><input id="takehome" type="number" inputmode="decimal" min="0"></label>
+        <label class="f">Take-home per paycheck<small>The amount that lands in your bank on a normal paycheck. This is the most useful number here. Leave blank and we'll estimate it.</small><input id="takehome" type="number" inputmode="decimal" min="0"></label>
+        <label class="f" id="wrap-prem">Health, dental and vision premiums per paycheck<small>On your pay stub. Used to estimate take-home when it's blank.</small><input id="prem" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Extra shifts, overtime or a second job, per month<small>A typical month, before taxes. Your plan budgets without it.</small><input id="extra" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
@@ -227,7 +232,12 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
 
       <fieldset>
         <legend>Bills you must pay, per month</legend>
-        <label class="f">Rent or mortgage<input id="rent" type="number" inputmode="decimal" min="0"></label>
+        <div class="f" style="font-weight:700;font-size:.95rem">Your home</div>
+        <div class="seg" role="radiogroup" aria-label="Your home">
+          <label><input type="radio" name="housing" value="rent" id="housing-rent"><span>I rent</span></label>
+          <label><input type="radio" name="housing" value="own" id="housing-own"><span>I own</span></label>
+        </div>
+        <label class="f"><span id="rent-label">Rent</span><input id="rent" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Car payment<input id="car" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Everything else you must pay<small>Utilities, phone, food, gas, insurance, childcare. Not debt payments; those go below.</small><input id="other" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
@@ -242,6 +252,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
       <fieldset>
         <legend>Savings so far</legend>
         <label class="f">Cash savings<small>Money you could get to this week, not counting what's needed for this month's bills.</small><input id="cash" type="number" inputmode="decimal" min="0"></label>
+        <label class="f">How much your savings actually grows in a typical month<small>Not counting your retirement plan at work. A guess is fine; 0 is a common, honest answer.</small><input id="actualSave" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Retirement savings, all accounts<input id="rbal" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Years you've worked a job with Social Security taken out<small>A rough guess is fine.</small><input id="years" type="number" inputmode="numeric" min="0" max="60"></label>
         <label class="f">Pension from your job, per month at retirement<small>Most people leave this 0. Check your benefits statement if you have one.</small><input id="pension" type="number" inputmode="decimal" min="0"></label>
@@ -273,7 +284,10 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
 
       <fieldset>
         <legend>Spending in retirement</legend>
-        <label class="f">What your household would spend a month, in today's dollars<small>Leave blank to use your current must-pay bills. Leave out a car loan or mortgage that will be paid off by then. Add Medicare premiums and medical costs.</small><input id="spend" type="number" inputmode="decimal" min="0"></label>
+        <p class="muted small">Next Step starts from what you spend today: take-home pay minus what you save. Then it takes out payments that will be gone by 67.</p>
+        <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
+        <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
+        <label class="f">Or enter your own monthly number, in today's dollars<small>Include Medicare premiums and medical costs.</small><input id="spend" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
       <div class="btnrow">
@@ -319,7 +333,10 @@ const RULES = {
       {rate:.45,  ei:18290,max:8231,por:.2106}],
     eitcStart:{ other:[10860,23890,23890,23890], mfj:[18140,31160,31160,31160] },
     saver:{ single:[24250,26250,40250], hoh:[36375,39375,60375], mfj:[48500,52500,80500] },
-    ficaRate:.0765, ssWageBase:184500, deferralLimit:24500, iraLimit:7500
+    ficaRate:.0765, ssWageBase:184500, deferralLimit:24500, iraLimit:7500,
+    catchUp50:8000, catchUp60:11250, dcfsa:7500,
+    std65:{ single:2050, mfj:1650 },
+    ssTaxBase:{ single:[25000,34000], mfj:[32000,44000] }
   },
   nj: {
     brackets:{
@@ -330,7 +347,9 @@ const RULES = {
     exemption:1000, dependentExemption:1500,
     eitcShare:.40,
     ctcTiers:[[30000,1000],[40000,800],[50000,600],[60000,400],[80000,200]],
-    payrollApprox:.005
+    payrollApprox:.005,
+    retExclusion:{ single:75000, mfj:100000 },
+    anchor:{ own:[[150000,1500],[250000,1000]], rent:[[150000,450]] }
   },
   ss:{ bend1:1286, bend2:7749 },
   realReturn:.04, drawRate:.04
@@ -338,7 +357,7 @@ const RULES = {
 
 /* ===== state ===== */
 const EXAMPLE = {
-  example:true, age:46, filing:"mfj", kids:2, kids6:0, spouse:48000,
+  example:true, age:46, filing:"mfj", kids:2, kids6:0, kidOldest:15, spouse:48000, prem:165, housing:"own", actualSave:400, mortgageOff:true, carOff:true,
   payMode:"hourly", hourly:54, hours:36, salary:0, freq:26, takehome:"", extra:600,
   plan:"yes", ptype:"403b", pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
   rent:2750, car:540, other:2650,
@@ -347,7 +366,7 @@ const EXAMPLE = {
   hasPartner:"no", pAge:48, pPay:0, pSavings:38000, pSaveYear:2400, pPension:0, pSS:"", spend:""
 };
 const BLANK = {
-  example:false, age:30, filing:"single", kids:0, kids6:0, spouse:0,
+  example:false, age:30, filing:"single", kids:0, kids6:0, kidOldest:"", spouse:0, prem:0, housing:"rent", actualSave:"", mortgageOff:true, carOff:true,
   payMode:"hourly", hourly:0, hours:40, salary:0, freq:26, takehome:"", extra:0,
   plan:"unsure", ptype:"403b", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
   rent:0, car:0, other:0, debts:[], cash:0, rbal:0, years:5, pension:0, taxDone:false,
@@ -398,8 +417,9 @@ function taxModel(s, opts={}){
   const kids = Math.max(0, Math.round(n(s.kids)));
   const kids6 = Math.min(kids, Math.max(0, Math.round(n(s.kids6))));
   const f = s.filing;
+  const prem = n(s.prem)*(n(s.freq)||26);
 
-  const agi = Math.max(0, wages - pre);
+  const agi = Math.max(0, wages - pre - prem);
   const earned = agi;
   const taxable = Math.max(0, agi - F.std[f]);
   const tax = bracketTax(taxable, F.brackets[f]);
@@ -414,7 +434,7 @@ function taxModel(s, opts={}){
   const fedWithhold = Math.max(0, tax-ctcNonref);
   const fedNet = tax - ctcNonref - saver - actc - eic;
 
-  const njIncome = wages - (s.ptype==="401k" ? pre : 0);
+  const njIncome = wages - prem - (s.ptype==="401k" ? pre : 0);
   const exem = (f==="mfj"?2:1)*J.exemption + kids*J.dependentExemption;
   const njTaxable = Math.max(0, njIncome - exem);
   const noTax = njIncome <= (f==="single" ? J.noTaxAtOrBelow.single : J.noTaxAtOrBelow.other);
@@ -424,11 +444,11 @@ function taxModel(s, opts={}){
   const njCtc = kids6*tierAmt;
   const njNet = njTax - njEitc - njCtc;
 
-  const fica = F.ficaRate*(Math.min(user,F.ssWageBase)+Math.min(spouse,F.ssWageBase));
+  const fica = F.ficaRate*(Math.min(Math.max(0,user-prem),F.ssWageBase)+Math.min(spouse,F.ssWageBase));
   const njPay = J.payrollApprox*wages;
   const trueCost = fica + fedNet + njNet + njPay;          // everything paid, after credits
   const withheld = fica + fedWithhold + njTax + njPay;     // roughly what leaves paychecks
-  return {base,user,spouse,wages,contrib,pre,agi,tax,ctcTotal,ctcNonref,actc,saver,sRate,eic,fedWithhold,fedNet,
+  return {base,user,spouse,wages,prem,contrib,pre,agi,tax,ctcTotal,ctcNonref,actc,saver,sRate,eic,fedWithhold,fedNet,
           njTax,njEitc,njCtc,njNet,fica,njPay,trueCost,withheld,refund: withheld-trueCost, kids6};
 }
 function payoffMonths(debts, extra){
@@ -450,12 +470,33 @@ function monthsTo(target, have, perMonth){ if(have>=target) return 0; if(perMont
 function plural(k, w){ return k + " " + w + (k===1?"":"s"); }
 function duration(m){ if(m==null) return null; if(m<=1) return "about a month"; if(m<24) return "about "+plural(m,"month"); return "about "+plural(Math.round(m/12),"year"); }
 
+/* yearly tax in retirement (today's dollars, current law). ss = Social Security, other = pensions + pre-tax withdrawals */
+function retireTax(ss, other, status, people){
+  const F = RULES.fed, J = RULES.nj;
+  const [b1,b2] = F.ssTaxBase[status];
+  const prov = other + .5*ss;
+  let tss = 0;
+  if(prov>b2) tss = Math.min(.85*ss, .85*(prov-b2) + Math.min(.5*ss, .5*(b2-b1)));
+  else if(prov>b1) tss = Math.min(.5*ss, .5*(prov-b1));
+  const std = F.std[status] + people*F.std65[status];
+  const fed = bracketTax(Math.max(0, other + tss - std), F.brackets[status]);
+  // New Jersey: Social Security is not taxed; retirement income exclusion phases out from $100k to $150k
+  const full = J.retExclusion[status];
+  let excl = 0;
+  if(other<=100000) excl = Math.min(other, full);
+  else if(other<=125000) excl = other*(status==="mfj"?.5:.375);
+  else if(other<=150000) excl = other*(status==="mfj"?.25:.1875);
+  const njTaxable = Math.max(0, other - excl - people*2000);
+  const nj = bracketTax(njTaxable, J.brackets[status==="mfj"?"joint":"single"]);
+  return fed + nj;
+}
+
 function compute(s){
   const m = taxModel(s);
   const ppy = n(s.freq)||26;
   let takeYear;
   const estimated = !(n(s.takehome)>0);
-  if(estimated){ takeYear = m.wages - m.withheld - m.contrib; }
+  if(estimated){ takeYear = m.wages - m.withheld - m.contrib - m.prem; }
   else {
     const spouseNet = m.spouse * (m.wages>0 ? 1 - m.withheld/m.wages : 0);
     takeYear = n(s.takehome)*ppy + spouseNet;
@@ -526,15 +567,36 @@ function compute(s){
   }
   const pension = n(s.pension);
   const retIncome = ownSS + savMonthly + pension + p.ss + p.sav + p.pension;
+
+  // taxes in retirement
+  const ownSavTaxable = s.roth==="roth" ? 0 : savMonthly;
+  let retTax;
+  if(married) retTax = retireTax(12*(ownSS+p.ss), 12*(ownSavTaxable+pension+p.sav+p.pension), "mfj", 2)/12;
+  else {
+    retTax = retireTax(12*ownSS, 12*(ownSavTaxable+pension), "single", 1)/12;
+    if(partner) retTax += retireTax(12*p.ss, 12*(p.sav+p.pension), "single", 1)/12;
+  }
+  const retNet = retIncome - retTax;
+
+  // what's actually saved, and what's actually spent today
+  const saveKnown = s.actualSave!=="" && s.actualSave!=null;
+  const actualSave = saveKnown ? n(s.actualSave) : null;
+  const spendNow = take - (saveKnown ? actualSave : 0);
+  const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) : 0;
+  const dropCar = s.carOff!==false ? n(s.car) : 0;
+  const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins);
   const spendEntered = n(s.spend)>0;
-  const need = spendEntered ? n(s.spend) : bills;
+  const need = spendEntered ? n(s.spend) : needAuto;
+  const netShare = retIncome>0 ? retNet/retIncome : 1;
   const perPct = savPlus1 - savMonthly;
-  const short = Math.max(0, need - retIncome);
-  const morePct = short>0 && perPct>0 ? Math.ceil(short/perPct) : 0;
+  const perPctNet = perPct*netShare;
+  const short = Math.max(0, need - retNet);
+  const morePct = short>0 && perPctNet>0 ? Math.ceil(short/perPctNet) : 0;
 
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
-          partner,married,p,pension,retIncome,need,spendEntered,short,morePct,perPct};
+          partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
+          saveKnown,actualSave,spendNow,dropMort,dropCar,needAuto};
 }
 
 /* ===== steps ===== */
@@ -706,7 +768,9 @@ function render(){
       <div class="row total"><span>${neg?"Gap":"Left for your step"}</span><span>${money(c.left)}</span></div>
       ${c.extraNet>0?`<div class="row"><span class="muted">Extra shifts, after tax (not counted above)</span><span class="muted">+${money(c.extraNet)}</span></div>`:""}
     </div>
-    ${c.estimated?`<p class="small muted">Take-home is estimated. For a better number, add your real paycheck amount in My numbers.</p>`:""}
+    ${c.estimated?`<p class="small muted">Take-home is estimated${c.m.prem>0?"":" and doesn't include health premiums"}. For a better number, add your real paycheck amount in My numbers.</p>`:""}
+    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The other ${money(c.left-c.actualSave)} goes to everyday spending beyond must-pay bills. That's normal. The steps below only work if your step's money moves first, on payday, before it gets spent.</p><p class="small">Set an automatic transfer for the day after payday. Start with half of the gap, ${money((c.left-c.actualSave)/2)} a month, and raise it as you go.</p></div>` : ""}
+    ${(!neg && !c.saveKnown) ? `<p class="small muted">How much does your savings actually grow each month? Add it in My numbers. It's the best check on whether this money is really available.</p>` : ""}
   </section>`);
 
   // current step
@@ -743,24 +807,32 @@ function render(){
   </section>`);
 
   // retirement picture
-  const total = c.retIncome;
+  const gross = c.retIncome, total = c.retNet;
   const ssAll = c.pia + c.p.ss, savAll = c.savMonthly + c.p.sav, penAll = c.pension + c.p.pension;
-  const scale = Math.max(total, c.need, 1);
+  const scale = Math.max(gross, c.need, 1);
+  const k = gross>0 ? total/gross : 1;
   const w = v => (v/scale*100).toFixed(2);
   const covered = c.need>0 ? Math.min(999, Math.round(total/c.need*100)) : 0;
   const who = c.partner ? "your household" : "you";
   const part = (mine, theirs) => c.partner && theirs>0 ? ` (you ${money(mine)}, ${c.married?"spouse":"partner"} ${money(theirs)})` : "";
   let verdict;
   if(c.short<=0) verdict = `<p>That covers the <b class="num">${money(c.need)} a month</b> ${who} would spend${covered>100?`, with about ${money(total-c.need)} to spare`:""}.</p>`;
-  else verdict = `<p>${c.spendEntered?"You'd spend":"Your bills today are"} <b class="num">${money(c.need)} a month</b>, so ${who} would be about <b class="num">${money(c.short)} a month short</b> (${covered}% covered).</p>` +
-    (c.morePct>0 && c.morePct<=20 ? `<div class="money num">Saving about ${c.morePct}% more of your pay, starting now, closes that gap.</div>`
-      : `<p>Saving more alone is a big lift here. Working a few years past 67, delaying Social Security to 70 (about 24% more), and lower housing costs by then all close the gap too.</p>`);
+  else verdict = `<p>${who==="you"?"You'd":"Your household would"} spend about <b class="num">${money(c.need)} a month</b>, so ${who} would be about <b class="num">${money(c.short)} a month short</b> (${covered}% covered).</p>` +
+    (c.morePct>0 && c.morePct<=15 ? `<div class="money num">Saving about ${c.morePct}% more of your pay, starting now, closes that gap.</div>`
+      : `<p>Saving more closes part of it. Working a few years past 67, delaying Social Security to 70 (about 24% more each month), and spending less by then close the rest.</p>`);
+  const spendRows = c.spendEntered ? `<p class="small muted">Spending is the number you entered.</p>` : `<div class="rows small">
+      <div class="row"><span>What you spend today${c.saveKnown?"":" (assumes nothing is saved)"}</span><span>${money(c.spendNow)}</span></div>
+      ${c.dropMort>0?`<div class="row"><span>Mortgage paid off</span><span>−${money(c.dropMort)}</span></div>`:""}
+      ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
+      ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
+      <div class="row total"><span>Spending at 67</span><span>${money(c.need)}</span></div>
+    </div>`;
   h.push(`<section aria-labelledby="h-ret"><h2 id="h-ret">Your retirement picture</h2>
     <p>At 67, in today's dollars, ${who} would have about:</p>
-    <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month</span></div>
+    <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
     <div style="position:relative;padding-top:18px">
       <div class="stack" aria-hidden="true">
-        <i class="ss" style="width:${w(ssAll)}%"></i><i class="pn" style="width:${w(penAll)}%"></i><i class="sv" style="width:${w(savAll)}%"></i>
+        <i class="ss" style="width:${w(ssAll*k)}%"></i><i class="pn" style="width:${w(penAll*k)}%"></i><i class="sv" style="width:${w(savAll*k)}%"></i><i class="tx" style="width:${w(c.retTax)}%"></i>
       </div>
       <div class="need ${c.need/scale>.5?"r":""}" style="left:${w(c.need)}%"><span>Spending ${money(c.need)}</span></div>
     </div>
@@ -768,11 +840,27 @@ function render(){
       <span class="l1">Social Security ${money(ssAll)}${part(c.pia,c.p.ss)}</span>
       ${penAll>0?`<span class="l3">Pensions ${money(penAll)}${part(c.pension,c.p.pension)}</span>`:""}
       <span class="l2">From savings ${money(savAll)}${part(c.savMonthly,c.p.sav)}</span>
+      <span class="l4">Taxes −${money(c.retTax)}</span>
     </div>
     ${verdict}
-    <p>Each 1% more of your pay saved adds about <b class="num">${money(c.perPct)} a month</b> at 67.</p>
-    <p class="small muted">Social Security is a rough estimate from pay and years worked${c.p.ssEstimated?", for both of you":""}; ${c.married?"a spouse gets at least half the other's benefit. ":""}see real numbers at ssa.gov/myaccount. Savings assume ${Math.round(RULES.realReturn*100)}% growth a year after inflation and ${Math.round(RULES.drawRate*100)}% taken out each year. Everyone is counted at their own age 67.${c.spendEntered?"":" Set your own retirement spending in My numbers."}</p>
+    <details><summary>How spending at 67 is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Add Medicare premiums and other medical costs, about $200 to $400 a month per person, if you spend less on health care now. You can enter your own number in My numbers.</p></div></details>
+    <p>Each 1% more of your pay saved adds about <b class="num">${money(c.perPctNet)} a month</b> after tax at 67.</p>
+    <p class="small muted">Social Security is a rough estimate from pay and years worked${c.p.ssEstimated?", for both of you":""}; ${c.married?"a spouse gets at least half the other's benefit. ":""}see real numbers at ssa.gov/myaccount. Savings assume ${Math.round(RULES.realReturn*100)}% growth a year after inflation and ${Math.round(RULES.drawRate*100)}% taken out each year. Taxes use today's federal and New Jersey rules; New Jersey doesn't tax Social Security.${s.roth==="roth"?" Your Roth savings come out tax-free.":""} Everyone is counted at their own age 67.</p>
   </section>`);
+
+  // also on your list
+  const kidsN = n(s.kids), oldest = n(s.kidOldest);
+  const deps = c.married || kidsN>0;
+  const also = [];
+  if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, a common starting point is coverage of about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give you one or two times pay for free; a 20-year level term policy covers the rest, often for $30 to $60 a month at mid-life. Skip whole life.`);
+  also.push(`<b>Disability insurance.</b> Your ability to work is worth more than anything you own. Check whether your job's long-term disability plan replaces about 60% of pay, and sign up at open enrollment if it's optional.`);
+  if(kidsN>0 && s.kidOldest!=="" && s.kidOldest!=null){
+    const yrs = Math.max(0, 18-oldest);
+    also.push(`<b>College${yrs>0?`, in about ${plural(yrs,"year")}`:""}.</b> Open an NJBEST 529 plan and set up a small automatic deposit. File the FAFSA every year starting senior year of high school; New Jersey's Tuition Aid Grant and community college grants depend on it. Keep saving for retirement first. Loans exist for college, not for retirement.`);
+  }
+  if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more (2026 limits). Useful once the earlier steps are done.`);
+  if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
+  h.push(`<section aria-labelledby="h-also"><h2 id="h-also">Also on your list</h2><ul class="plain">${also.map(x=>`<li>${x}</li>`).join("")}</ul></section>`);
 
   // money on the table
   const table = [];
@@ -781,6 +869,11 @@ function render(){
   if(c.m.eic>0 || c.m.njEitc>0) table.push(`Earned Income Tax Credits, federal and New Jersey: about <b class="num">${money(c.m.eic+c.m.njEitc)}</b>. About 1 in 5 people who qualify never claim it.`);
   if(c.m.njCtc>0) table.push(`New Jersey Child Tax Credit for children under 6: about <b class="num">${money(c.m.njCtc)}</b>.`);
   if(c.m.sRate>0 && c.m.contrib<2000) table.push(`Saver's Credit: your income qualifies for ${Math.round(c.m.sRate*100)}% back on up to $2,000 saved for retirement, limited by the tax you owe.`);
+  if(n(s.kids6)>0) table.push(`Dependent care FSA: pay up to <b class="num">${money(RULES.fed.dcfsa)}</b> a year of childcare before tax (new 2026 limit). Sign up at open enrollment.`);
+  const hhInc = c.m.wages;
+  const tiers = RULES.nj.anchor[s.housing==="own"?"own":"rent"];
+  const anch = (tiers.find(([top])=>hhInc<=top)||[0,0])[1];
+  if(anch>0) table.push(`New Jersey's ANCHOR property tax benefit for ${s.housing==="own"?"homeowners":"renters"}: about <b class="num">${money(anch)}</b> a year. Apply every year at nj.gov/anchor.`);
   table.push("Phone and car insurance: shopping these once a year often saves $30 to $100 a month.");
   h.push(`<section aria-labelledby="h-table"><h2 id="h-table">Money you may be leaving on the table</h2><ul class="plain">${table.map(x=>`<li>${x}</li>`).join("")}</ul></section>`);
 
@@ -811,15 +904,20 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
-const RADIOS = ["filing","payMode","plan","hasPartner"];
+const FIELDS = ["kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
+const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
   FIELDS.forEach(k=>{ const el=$(k); if(el) el.value = S[k]===undefined||S[k]===null ? "" : S[k]; });
   RADIOS.forEach(k=>{ document.querySelectorAll(`input[name="${k}"]`).forEach(r=>r.checked = r.value===S[k]); });
+  CHECKS.forEach(k=>{ $(k).checked = S[k]!==false; });
   renderDebts(); toggles();
 }
 function toggles(){
   $("wrap-kids6").hidden = !(n(S.kids)>0);
+  $("wrap-oldest").hidden = !(n(S.kids)>0);
+  $("wrap-mortoff").hidden = S.housing!=="own";
+  $("rent-label").textContent = S.housing==="own" ? "Mortgage, property tax and insurance" : "Rent";
   $("wrap-spouse").hidden = S.filing!=="mfj";
   $("wrap-hourly").hidden = S.payMode!=="hourly";
   $("wrap-salary").hidden = S.payMode!=="salary";
@@ -846,6 +944,7 @@ function onChange(e){
   const t = e.target;
   if(t.dataset.k){ const d=S.debts[+t.dataset.i]; d[t.dataset.k] = t.dataset.k==="type" ? t.value : t.value; }
   else if(RADIOS.includes(t.name)) S[t.name] = t.value;
+  else if(CHECKS.includes(t.id)) S[t.id] = t.checked;
   else if(FIELDS.includes(t.id)) S[t.id] = (t.tagName==="SELECT") ? (t.id==="freq"? +t.value : t.value) : t.value;
   else return;
   S.example = false;
