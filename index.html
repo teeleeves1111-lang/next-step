@@ -55,6 +55,11 @@ header.top{position:sticky;top:env(safe-area-inset-top, 0px);z-index:5;backgroun
 .tabs button{border:0;background:transparent;color:var(--ink);font:inherit;font-size:.92rem;font-weight:700;padding:8px 14px;border-radius:999px;cursor:pointer}
 .tabs button[aria-selected="true"]{background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.12)}
 
+.row.bk{align-items:center;cursor:text}
+.row.bk > span:first-child{display:flex;flex-direction:column;min-width:0}
+.row.bk small{font-size:.8rem}
+.bkin{display:flex;align-items:center;gap:4px;flex:none}
+.bkin input[type=number]{width:88px;flex:none;padding:6px 8px;font-size:1rem;text-align:right}
 .callout{background:var(--gap-soft);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:.95rem;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .banner button{flex:none}
@@ -358,6 +363,7 @@ const RULES = {
 /* ===== state ===== */
 const EXAMPLE = {
   example:true, age:46, filing:"mfj", kids:2, kids6:0, kidOldest:15, spouse:48000, prem:165, housing:"own", actualSave:400, mortgageOff:true, carOff:true,
+  buckets:{repairs:1500, gifts:1200, vacation:3000, car:0, yearly:0},
   payMode:"hourly", hourly:54, hours:36, salary:0, freq:26, takehome:"", extra:600,
   plan:"yes", ptype:"403b", pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
   rent:2750, car:540, other:2650,
@@ -367,6 +373,7 @@ const EXAMPLE = {
 };
 const BLANK = {
   example:false, age:30, filing:"single", kids:0, kids6:0, kidOldest:"", spouse:0, prem:0, housing:"rent", actualSave:"", mortgageOff:true, carOff:true,
+  buckets:{repairs:1200, gifts:800, vacation:0, car:0, yearly:0},
   payMode:"hourly", hourly:0, hours:40, salary:0, freq:26, takehome:"", extra:0,
   plan:"unsure", ptype:"403b", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
   rent:0, car:0, other:0, debts:[], cash:0, rbal:0, years:5, pension:0, taxDone:false,
@@ -747,6 +754,35 @@ function stepDetail(id, s, c){
   }
 }
 
+const BUCKETS = [
+  ["repairs","Car repairs and upkeep","Tires, brakes, inspection"],
+  ["gifts","Holidays, birthdays, school costs",""],
+  ["vacation","Vacations and trips",""],
+  ["car","Next car","Amount you want saved, divided by years until you buy"],
+  ["yearly","Bills that come once or twice a year","Insurance, fees, memberships"]
+];
+function bucketOut(){
+  const s = S, c = compute(s), ppy = n(s.freq)||26;
+  const b = s.buckets||{};
+  const total = BUCKETS.reduce((a,[k])=>a+n(b[k]),0);
+  const per = total/ppy;
+  const leftPer = Math.max(0,c.left)*12/ppy;
+  const savePer = c.saveKnown ? c.actualSave*12/ppy : null;
+  const cur = buildSteps(s,c).find(x=>x.status==="now");
+  const early = cur && ["number","cushion","debt"].includes(cur.id);
+  let msg;
+  if(total<=0) msg = `<p class="small muted">Enter what each costs in a year. Next Step turns it into a per-paycheck amount.</p>`;
+  else {
+    msg = `<div class="money num">Set aside about ${money(per)} a paycheck${BUCKETS.filter(([k])=>n(b[k])>0).length>1?" in total":""}.</div>`;
+    if(c.left<=0) msg += `<p>Right now there's nothing left after must-pay bills, so close that gap first. Then start with just one bucket, even $10 a paycheck.</p>`;
+    else if(savePer!=null && per<=savePer) msg += `<p>That fits inside what you already save each paycheck. Give each dollar a bucket.</p>`;
+    else if(per<=leftPer) msg += `<p>That fits in what's left after bills, about ${money(leftPer)} a paycheck, but only if it moves on payday before it's spent.${early?" Your step above still comes first; start the buckets small alongside it.":""}</p>`;
+    else msg += `<p>That's more than what's left after bills, about ${money(leftPer)} a paycheck. That's common, and it's useful to see. Start with car repairs and holidays, then add the rest as debts are paid off. A smaller vacation or a cheaper next car also shrinks it.</p>`;
+    msg += `<p class="small muted">Even half helps. Every dollar set aside is a dollar not borrowed at credit card rates.</p>`;
+  }
+  const out = $("bk-out"); if(out) out.innerHTML = msg;
+}
+
 /* ===== render plan ===== */
 function render(){
   const s = S, c = compute(s), steps = buildSteps(s,c);
@@ -804,6 +840,20 @@ function render(){
   const chip = {done:'<span class="chip done">Done</span>', now:'<span class="chip now">Now</span>', todo:'<span class="chip">Later</span>', skip:'<span class="chip skip">Not needed</span>'};
   h.push(`<section aria-labelledby="h-prog"><h2 id="h-prog">Your progress</h2>
     <ol class="steps">${steps.map(x=>`<li class="${x.status}"><span class="n">${x.status==="done"?"✓":x.n}</span><span class="t">${TITLES[x.id]}<small class="num">${esc(sub[x.id])}</small></span>${chip[x.status]}</li>`).join("")}</ol>
+  </section>`);
+
+  // costs you know are coming
+  h.push(`<section aria-labelledby="h-bk"><h2 id="h-bk">Costs you know are coming</h2>
+    <p>Car repairs, holidays, vacations and the next car aren't emergencies. They're bills that come once a year instead of once a month. Setting a little aside each payday keeps them off a credit card.</p>
+    <div class="rows" id="bk-rows"><div class="row small muted"><span>What it costs</span><span>Per year</span></div>${BUCKETS.map(([k,l,hint])=>`<label class="row bk"><span>${l}<small class="muted">${hint}</small></span><span class="bkin">$<input type="number" inputmode="decimal" min="0" id="bk-${k}" data-bk="${k}" value="${n((s.buckets||{})[k])||""}" placeholder="0" aria-label="${l}, per year"></span></label>`).join("")}</div>
+    <div id="bk-out"></div>
+    <details><summary>How to do it</summary><ul class="how">
+      <li>Ask HR or your benefits website to <b>split your direct deposit</b>, so a set amount goes straight to savings every payday. Money that never lands in checking doesn't get spent.</li>
+      <li>Use a free online savings account that lets you name separate buckets (several online banks offer this), or open a few separate savings accounts at a credit union.</li>
+      <li>Start with one or two buckets, even $10 a paycheck each. Car repairs and holidays are the ones that most often end up on a card.</li>
+      <li>Keep using a card for points or protection, but pay it off in full that month from the bucket.</li>
+      <li>When a debt is paid off or a raise comes, send that money to the buckets you haven't funded yet.</li>
+    </ul></details>
   </section>`);
 
   // retirement picture
@@ -916,6 +966,7 @@ function render(){
   $("view-plan").innerHTML = h.join("");
   const td = $("tax-done"); if(td) td.onclick = ()=>{ S.taxDone=true; S.example=false; save(); render(); window.scrollTo({top:0}); };
   document.querySelectorAll('[data-go="form"]').forEach(b=>b.onclick=()=>show("form"));
+  bucketOut();
   try{ $("code-out").value = btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }catch(e){}
 }
 
@@ -967,6 +1018,7 @@ function onChange(e){
   if(t.id==="pct" || t.id==="match" || t.id==="mupto") S.taxDone = S.taxDone;
   toggles(); save(); render();
 }
+$("view-plan").addEventListener("input", e=>{ const k=e.target.dataset.bk; if(!k) return; S.buckets = Object.assign({}, S.buckets||{}, {[k]: e.target.value}); S.example=false; save(); bucketOut(); try{ $("code-out").value = btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }catch(_){} });
 $("f").addEventListener("input", onChange);
 $("f").addEventListener("change", onChange);
 $("debts").addEventListener("click", e=>{ const i=e.target.dataset.del; if(i!=null){ S.debts.splice(+i,1); S.example=false; save(); renderDebts(); render(); } });
