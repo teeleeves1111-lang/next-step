@@ -677,7 +677,7 @@ function stepDetail(id, s, c){
       how:[
         `Log in to your benefits website, open the retirement plan, and change your contribution to ${t.upto}%. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
         c.preSaves>=0.15 ? "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later." : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : "Pre-tax or Roth both work at your income. Step \"Check your taxes\" shows the numbers.",
-        "If you're asked to pick investments, a target-date fund with the year closest to when you'll turn 67 is a simple, low-cost choice.",
+        "If you're asked to pick investments, see \"Choosing investments\" below. Usually that means a low-cost target-date index fund, or the plan's cheapest broad index fund.",
         vest
       ].filter(Boolean)};
   }
@@ -736,7 +736,7 @@ function stepDetail(id, s, c){
       how:[
         "Turn on automatic yearly increases if your plan has them. Otherwise raise it 1% every January and with every raise.",
         s.plan==="no" ? `No plan at work? Open a Roth IRA at a low-cost firm and set up an automatic deposit. The 2026 limit is ${money(RULES.fed.iraLimit)}.` : "Once you're past the match, a Roth IRA is another good place for savings.",
-        "Pick a target-date fund and leave it alone.",
+        "Pick low-cost funds (see \"Choosing investments\" below) and leave them alone.",
         "Avoid borrowing from or cashing out your retirement account, even when changing jobs. Roll it over instead."
       ]};
   }
@@ -861,6 +861,22 @@ function render(){
   if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more (2026 limits). Useful once the earlier steps are done.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
   h.push(`<section aria-labelledby="h-also"><h2 id="h-also">Also on your list</h2><ul class="plain">${also.map(x=>`<li>${x}</li>`).join("")}</ul></section>`);
+
+  // choosing investments
+  const tdYear = Math.round((RULES.year + Math.max(0, 67-n(s.age)))/5)*5;
+  const hasPension = n(s.pension)>0 || (c.partner && n(s.pPension)>0);
+  h.push(`<section aria-labelledby="h-inv"><h2 id="h-inv">Choosing investments</h2>
+    <p>General guidance, not a pick for your plan. Every employer's fund list is different.</p>
+    <ul class="plain">
+      <li><b>Treat all your retirement accounts as one pot.</b> Your work plan, any IRA, and a spouse's accounts add up to one mix of stocks and bonds. Decide the mix for the whole pot, not account by account.</li>
+      <li><b>The simple choice:</b> one target-date <i>index</i> fund in each account, with the year closest to when you'll retire, around <span class="num">${tdYear}</span> for you. It holds stocks and bonds and gets safer as you get older.</li>
+      <li><b>Check the cost.</b> Look for the "expense ratio." Under about 0.25% a year is good; broad index funds often cost 0.02% to 0.15%. On <span class="num">$100,000</span>, a 0.75% fund costs about <span class="num">$700</span> a year more than a 0.05% one, every year.</li>
+      <li><b>If your work plan's target-date funds are expensive,</b> use its cheapest broad stock index fund there, such as an S&amp;P 500 or total stock market fund. Then use an IRA to balance the pot: a target-date index fund, or a bond index fund if you want less stock overall.</li>
+      <li><b>Know your overall stock share.</b> Ten years from retirement, target-date funds hold roughly 50% to 60% in stocks. An all-S&amp;P 500 account is 100% stocks, so if it's your biggest account, your pot is mostly stocks.${hasPension?" A pension works a lot like a bond, so with one coming you can reasonably hold more stock.":""}</li>
+      <li><b>Read fund names closely.</b> At Fidelity, "Freedom Index" funds cost about 0.12% a year; plain "Freedom" funds cost about 0.65% or more. Vanguard Target Retirement and Schwab Target Index funds are also low-cost.</li>
+      <li><b>Be careful with annuity options</b> and "guaranteed" accounts inside a 403(b). Fees are often high and money can be hard to move. Don't switch because a salesperson suggests it.</li>
+      <li><b>Look once a year,</b> rebalance if your mix has drifted, and don't change course because of the news.</li>
+    </ul></section>`);
 
   // money on the table
   const table = [];
