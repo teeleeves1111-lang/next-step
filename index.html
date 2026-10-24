@@ -338,13 +338,13 @@ const RULES = {
 
 /* ===== state ===== */
 const EXAMPLE = {
-  example:true, age:33, filing:"hoh", kids:1, kids6:1, spouse:0,
-  payMode:"hourly", hourly:47, hours:36, salary:0, freq:26, takehome:"", extra:700,
-  plan:"yes", ptype:"403b", pct:3, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
-  rent:2150, car:465, other:1750,
-  debts:[{type:"card",balance:6200,rate:24,min:185},{type:"student",balance:21000,rate:5.5,min:230}],
-  cash:450, rbal:16000, years:10, pension:0, taxDone:false,
-  hasPartner:"no", pAge:"", pPay:0, pSavings:0, pSaveYear:0, pPension:0, pSS:"", spend:""
+  example:true, age:46, filing:"mfj", kids:2, kids6:0, spouse:48000,
+  payMode:"hourly", hourly:54, hours:36, salary:0, freq:26, takehome:"", extra:600,
+  plan:"yes", ptype:"403b", pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
+  rent:2750, car:540, other:2650,
+  debts:[{type:"card",balance:7400,rate:23,min:220},{type:"personal",balance:5200,rate:12,min:175}],
+  cash:2800, rbal:92000, years:23, pension:0, taxDone:false,
+  hasPartner:"no", pAge:48, pPay:0, pSavings:38000, pSaveYear:2400, pPension:0, pSS:"", spend:""
 };
 const BLANK = {
   example:false, age:30, filing:"single", kids:0, kids6:0, spouse:0,
@@ -692,7 +692,7 @@ function render(){
   const d = stepDetail(cur.id, s, c);
   const next = steps.slice(steps.indexOf(cur)+1).find(x=>x.status!=="done" && x.status!=="skip");
   const h = [];
-  if(s.example) h.push(`<div class="banner"><span><b>These are example numbers</b> for a nurse who's a single parent. Put in your own to see your plan.</span><button class="btn small primary" type="button" data-go="form">Use my numbers</button></div>`);
+  if(s.example) h.push(`<div class="banner"><span><b>These are example numbers</b> for a mid-career nurse, married with two kids. Put in your own to see your plan.</span><button class="btn small primary" type="button" data-go="form">Use my numbers</button></div>`);
 
   // this month
   const neg = c.left<0;
