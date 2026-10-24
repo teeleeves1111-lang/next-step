@@ -73,6 +73,13 @@ details.fold[open] > summary::after{transform:translateY(-30%) rotate(225deg)}
 .fb h3{margin-top:6px}
 details.more{border-top:1px solid var(--line);padding-top:14px}
 details.more > summary{font-size:1.05rem}
+.agerow{display:grid;grid-template-columns:repeat(auto-fill,minmax(60px,1fr));gap:6px}
+.agechip{font:inherit;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:6px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;font-variant-numeric:tabular-nums}
+.agechip b{font-family:var(--display);font-size:1.05rem}
+.agechip span{font-size:.72rem;color:var(--muted)}
+.agechip.ok span{color:var(--accent);font-weight:700;font-size:.9rem}
+.agechip.no span{color:var(--gap)}
+.agechip.sel{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
 .callout{background:var(--gap-soft);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:.95rem;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .banner button{flex:none}
@@ -100,7 +107,7 @@ details{border-top:1px solid var(--line);padding-top:10px}
 summary{cursor:pointer;font-weight:700;color:var(--accent);list-style:none;display:flex;align-items:center;gap:6px}
 summary::-webkit-details-marker{display:none}
 summary::before{content:"+";display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;background:var(--accent-soft);font-size:.9rem}
-details[open] summary::before{content:"–"}
+details[open] > summary::before{content:"–"}
 .how{margin:10px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:8px}
 .after{font-size:.95rem;color:var(--muted)}
 .after b{color:var(--ink)}
@@ -395,7 +402,8 @@ const RULES = {
     anchor:{ own:[[150000,1500],[250000,1000]], rent:[[150000,450]] }
   },
   ss:{ bend1:1286, bend2:7749 },
-  realReturn:.04, drawRate:.04
+  realReturn:.04, drawRate:.04,
+  health:{ pre65:800, medicare:200 }
 };
 
 /* ===== state ===== */
@@ -515,6 +523,56 @@ function monthsTo(target, have, perMonth){ if(have>=target) return 0; if(perMont
 function plural(k, w){ return k + " " + w + (k===1?"":"s"); }
 function duration(m){ if(m==null) return null; if(m<=1) return "about a month"; if(m<24) return "about "+plural(m,"month"); return "about "+plural(Math.round(m/12),"year"); }
 
+/* Social Security claiming factors, full retirement age 67 */
+function claimF(a){ a=Math.min(70,Math.max(62,a)); if(a>=67) return 1+.08*(a-67); const m=(67-a)*12; return 1-(Math.min(36,m)*5/9+Math.max(0,m-36)*5/12)/100; }
+function spouseF(a){ a=Math.min(67,Math.max(62,a)); const m=(67-a)*12; return 1-(Math.min(36,m)*25/36+Math.max(0,m-36)*5/12)/100; }
+function piaFrom(a){ const B1=RULES.ss.bend1, B2=RULES.ss.bend2; return .9*Math.min(a,B1)+.32*Math.max(0,Math.min(a,B2)-B1)+.15*Math.max(0,a-B2); }
+
+/* the household if you stop working at age R (today's dollars). Both partners stop the same year; Social Security claimed then (62 at the earliest). */
+function retireAt(s, c, R, addPct=0){
+  const age = n(s.age), yrs = Math.max(0, R-age);
+  const ownPIA = piaFrom(Math.min(c.m.base, RULES.fed.ssWageBase)/12 * Math.min(35, n(s.years)+yrs)/35);
+  const draw = R>=65 ? RULES.drawRate : RULES.drawRate - .002*(65-R);
+  let bal = n(s.rbal);
+  const p = c.pct + addPct;
+  let mt = 0; if(c.terms && c.terms!=="unsure") mt = c.m.base*c.terms.pct/100*Math.min(p,c.terms.upto)/100;
+  const yearly = (s.plan==="yes" ? c.m.base*p/100 : c.m.base*addPct/100) + mt;
+  for(let y=0;y<yrs;y++) bal = bal*(1+RULES.realReturn) + yearly;
+  const sav = bal*draw/12;
+  let ssOwn = ownPIA*claimF(R), ssP = 0, psav = 0, ppen = 0, pa = null;
+  if(c.partner){
+    pa = (n(s.pAge)||age) + (R-age);
+    ssP = c.pPIA*claimF(pa);
+    if(c.married){ ssOwn = Math.max(ssOwn, .5*c.pPIA*spouseF(R)); ssP = Math.max(ssP, .5*ownPIA*spouseF(pa)); }
+    let pb = n(s.pSavings); for(let y=0;y<yrs;y++) pb = pb*(1+RULES.realReturn) + n(s.pSaveYear);
+    psav = pb*draw/12; ppen = n(s.pPension);
+  }
+  const pen = n(s.pension);
+  const gross = ssOwn + sav + pen + ssP + psav + ppen;
+  const ownTaxable = s.roth==="roth" ? 0 : sav;
+  let tax;
+  if(c.married) tax = retireTax(12*(ssOwn+ssP), 12*(ownTaxable+pen+psav+ppen), "mfj", 2)/12;
+  else { tax = retireTax(12*ssOwn, 12*(ownTaxable+pen), "single", 1)/12; if(c.partner) tax += retireTax(12*ssP, 12*(psav+ppen), "single", 1)/12; }
+  const ages = c.partner ? [R, pa] : [R];
+  const health = ages.reduce((a,x)=>a + (x<65 ? RULES.health.pre65 : RULES.health.medicare), 0);
+  const pre65 = ages.some(x=>x<65);
+  const need = c.need + health;
+  const net = gross - tax;
+  return {R, pa, gross, tax, net, need, health, pre65, short: Math.max(0, need-net), covered: net>=need,
+          ssOwn, ssP, sav, psav, pen, ppen};
+}
+function retirePlan(s, c){
+  const age = n(s.age);
+  const ages = []; for(let a=Math.max(62, Math.ceil(age)); a<=70; a++) ages.push(a);
+  const rows = ages.map(a=>retireAt(s,c,a));
+  const first = rows.find(r=>r.covered);
+  let fix = null;
+  if(!first || first.R>67){
+    for(let k=1;k<=20;k++){ if(retireAt(s,c,67,k).covered){ fix = {pct:k, age:67}; break; } }
+  }
+  return {rows, earliest: first ? first.R : null, fix};
+}
+
 /* yearly tax in retirement (today's dollars, current law). ss = Social Security, other = pensions + pre-tax withdrawals */
 function retireTax(ss, other, status, people){
   const F = RULES.fed, J = RULES.nj;
@@ -595,7 +653,7 @@ function compute(s){
   const partner = married || s.hasPartner==="yes";
   const piaOf = a => .9*Math.min(a,B1) + .32*Math.max(0,Math.min(a,B2)-B1) + .15*Math.max(0,a-B2);
   let p = {ss:0, sav:0, pension:0, ssEstimated:false};
-  let ownSS = pia;
+  let ownSS = pia, pPIA = 0;
   if(partner){
     const pAge = n(s.pAge) || age;
     const pPay = married ? n(s.spouse) : n(s.pPay);
@@ -605,6 +663,7 @@ function compute(s){
       pss = piaOf(Math.min(pPay, RULES.fed.ssWageBase)/12 * yrs/35);
       p.ssEstimated = true;
     }
+    pPIA = pss;
     if(married){ pss = Math.max(pss, .5*pia); ownSS = Math.max(pia, .5*pss); }
     let bal = n(s.pSavings);
     for(let y=0;y<Math.max(0,67-pAge);y++) bal = bal*(1+RULES.realReturn) + n(s.pSaveYear);
@@ -641,7 +700,7 @@ function compute(s){
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
-          saveKnown,actualSave,spendNow,dropMort,dropCar,needAuto};
+          saveKnown,actualSave,spendNow,dropMort,dropCar,needAuto,pPIA};
 }
 
 /* ===== steps ===== */
@@ -822,6 +881,7 @@ function paydayPlan(s, c, steps){
 }
 
 const OPEN = new Set();
+let RETAGE = null;
 const BUCKETS = [
   ["repairs","Car repairs and upkeep","Tires, brakes, inspection"],
   ["gifts","Holidays, birthdays, school costs",""],
@@ -939,46 +999,56 @@ function render(){
   </div></details>`);
 
   // retirement picture
-  const gross = c.retIncome, total = c.retNet;
-  const ssAll = c.pia + c.p.ss, savAll = c.savMonthly + c.p.sav, penAll = c.pension + c.p.pension;
-  const scale = Math.max(gross, c.need, 1);
+  const rp = retirePlan(s, c);
+  if(RETAGE==null || !rp.rows.some(r=>r.R===RETAGE)) RETAGE = rp.earliest ?? (rp.rows.find(r=>r.R===67) ? 67 : (rp.rows[rp.rows.length-1]||{}).R);
+  const ra = rp.rows.find(r=>r.R===RETAGE) || retireAt(s,c,67);
+  const total = ra.net, gross = ra.gross;
+  const ssAll = ra.ssOwn+ra.ssP, savAll = ra.sav+ra.psav, penAll = ra.pen+ra.ppen;
+  const scale = Math.max(gross, ra.need, 1);
   const k = gross>0 ? total/gross : 1;
   const w = v => (v/scale*100).toFixed(2);
-  const covered = c.need>0 ? Math.min(999, Math.round(total/c.need*100)) : 0;
   const who = c.partner ? "your household" : "you";
   const part = (mine, theirs) => c.partner && theirs>0 ? ` (you ${money(mine)}, ${c.married?"spouse":"partner"} ${money(theirs)})` : "";
+  const headline = rp.earliest!=null
+    ? (rp.earliest<=Math.max(62,Math.ceil(n(s.age))) && n(s.age)>=62 ? `You could retire now` : `Earliest you could retire: about ${rp.earliest}`)
+    : `Not covered by 70 at today's saving`;
+  const fixLine = rp.fix ? `Saving about ${rp.fix.pct}% more of your pay, starting now, would let ${who} retire at 67.` : (rp.earliest==null ? `Saving more, spending less by then, and working longer all help. Start with the payday plan.` : "");
   let verdict;
-  if(c.short<=0) verdict = `<p>That covers the <b class="num">${money(c.need)} a month</b> ${who} would spend${covered>100?`, with about ${money(total-c.need)} to spare`:""}.</p>`;
-  else verdict = `<p>${who==="you"?"You'd":"Your household would"} spend about <b class="num">${money(c.need)} a month</b>, so ${who} would be about <b class="num">${money(c.short)} a month short</b> (${covered}% covered).</p>` +
-    (c.morePct>0 && c.morePct<=15 ? `<div class="money num">Saving about ${c.morePct}% more of your pay, starting now, closes that gap.</div>`
-      : `<p>Saving more closes part of it. Working a few years past 67, delaying Social Security to 70 (about 24% more each month), and spending less by then close the rest.</p>`);
-  const spendRows = c.spendEntered ? `<p class="small muted">Spending is the number you entered.</p>` : `<div class="rows small">
+  if(ra.covered) verdict = `<p>At ${ra.R}, that covers the <b class="num">${money(ra.need)} a month</b> ${who} would spend${total>ra.need+1?`, with about ${money(total-ra.need)} to spare`:""}.</p>`;
+  else verdict = `<p>At ${ra.R}, ${who} would spend about <b class="num">${money(ra.need)} a month</b>, so ${who} would be about <b class="num">${money(ra.short)} a month short</b>.</p>`;
+  const spendRows = (c.spendEntered ? `<div class="rows small"><div class="row"><span>The number you entered</span><span>${money(c.need)}</span></div>` : `<div class="rows small">
       <div class="row"><span>What you spend today${c.saveKnown?"":" (assumes nothing is saved)"}</span><span>${money(c.spendNow)}</span></div>
       ${c.dropMort>0?`<div class="row"><span>Mortgage paid off</span><span>−${money(c.dropMort)}</span></div>`:""}
       ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
-      ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
-      <div class="row total"><span>Spending at 67</span><span>${money(c.need)}</span></div>
+      ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}`) + `
+      <div class="row"><span>${ra.pre65?"Health insurance until 65":"Medicare premiums"}</span><span>+${money(ra.health)}</span></div>
+      <div class="row total"><span>Spending at ${ra.R}</span><span>${money(ra.need)}</span></div>
     </div>`;
-  h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${c.short<=0 ? `Covered, ${money(total-c.need)} a month to spare` : `About ${money(c.short)} a month short`}</span></summary><div class="fb">
-    <p>At 67, in today's dollars, ${who} would have about:</p>
+  const per1 = retireAt(s,c,ra.R,1).net - ra.net;
+  const chips = rp.rows.map(r=>`<button type="button" class="agechip ${r.covered?"ok":"no"} ${r.R===ra.R?"sel":""}" data-retage="${r.R}" aria-pressed="${r.R===ra.R}"><b>${r.R}</b><span>${r.covered?"✓":money(-r.short).replace("−","−")}</span></button>`).join("");
+  h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${headline}</span></summary><div class="fb">
+    <div class="money">${headline}.</div>
+    ${fixLine?`<p>${fixLine}</p>`:""}
+    <div><p class="small muted" style="margin-bottom:6px">Tap an age. ✓ means income covers spending; otherwise it shows the monthly shortfall.</p><div class="agerow">${chips}</div></div>
+    <p>If ${who==="you"?"you stop":"you both stop"} working at ${ra.R}, in today's dollars, ${who} would have about:</p>
     <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
     <div style="position:relative;padding-top:18px">
       <div class="stack" aria-hidden="true">
-        <i class="ss" style="width:${w(ssAll*k)}%"></i><i class="pn" style="width:${w(penAll*k)}%"></i><i class="sv" style="width:${w(savAll*k)}%"></i><i class="tx" style="width:${w(c.retTax)}%"></i>
+        <i class="ss" style="width:${w(ssAll*k)}%"></i><i class="pn" style="width:${w(penAll*k)}%"></i><i class="sv" style="width:${w(savAll*k)}%"></i><i class="tx" style="width:${w(ra.tax)}%"></i>
       </div>
-      <div class="need ${c.need/scale>.5?"r":""}" style="left:${w(c.need)}%"><span>Spending ${money(c.need)}</span></div>
+      <div class="need ${ra.need/scale>.5?"r":""}" style="left:${w(ra.need)}%"><span>Spending ${money(ra.need)}</span></div>
     </div>
     <div class="legend num" style="flex-direction:column;gap:4px">
-      <span class="l1">Social Security ${money(ssAll)}${part(c.pia,c.p.ss)}</span>
-      ${penAll>0?`<span class="l3">Pensions ${money(penAll)}${part(c.pension,c.p.pension)}</span>`:""}
-      <span class="l2">From savings ${money(savAll)}${part(c.savMonthly,c.p.sav)}</span>
-      <span class="l4">Taxes −${money(c.retTax)}</span>
+      <span class="l1">Social Security ${money(ssAll)}${part(ra.ssOwn,ra.ssP)}</span>
+      ${penAll>0?`<span class="l3">Pensions ${money(penAll)}${part(ra.pen,ra.ppen)}</span>`:""}
+      <span class="l2">From savings ${money(savAll)}${part(ra.sav,ra.psav)}</span>
+      ${ra.tax>=1?`<span class="l4">Taxes −${money(ra.tax)}</span>`:""}
     </div>
     ${verdict}
-    ${gross>0 && c.retTax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
-    <details><summary>How spending at 67 is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Add Medicare premiums and other medical costs, about $200 to $400 a month per person, if you spend less on health care now. You can enter your own number in My numbers.</p></div></details>
-    <p>Each 1% more of your pay saved adds about <b class="num">${money(c.perPctNet)} a month</b> after tax at 67.</p>
-    <p class="small muted">Social Security is a rough estimate from pay and years worked${c.p.ssEstimated?", for both of you":""}; ${c.married?"a spouse gets at least half the other's benefit. ":""}see real numbers at ssa.gov/myaccount. Savings assume ${Math.round(RULES.realReturn*100)}% growth a year after inflation and ${Math.round(RULES.drawRate*100)}% taken out each year. Taxes use today's federal and New Jersey rules; New Jersey doesn't tax Social Security.${s.roth==="roth"?" Your Roth savings come out tax-free.":""} Everyone is counted at their own age 67.</p>
+    ${gross>0 && ra.tax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
+    <details><summary>How spending at ${ra.R} is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p></div></details>
+    <p>Each 1% more of your pay saved adds about <b class="num">${money(per1)} a month</b> after tax at ${ra.R}.</p>
+    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${s.roth==="roth"?" Your Roth savings come out tax-free.":""}</p>
   </div></details>`);
 
   // also on your list
@@ -1104,6 +1174,7 @@ function onChange(e){
   if(t.id==="pct" || t.id==="match" || t.id==="mupto") S.taxDone = S.taxDone;
   toggles(); save(); render();
 }
+$("view-plan").addEventListener("click", e=>{ const b=e.target.closest("[data-retage]"); if(b){ RETAGE=+b.dataset.retage; render(); } });
 $("view-plan").addEventListener("input", e=>{ const k=e.target.dataset.bk; if(!k) return; S.buckets = Object.assign({}, S.buckets||{}, {[k]: e.target.value}); S.example=false; save(); bucketOut(); try{ $("code-out").value = btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }catch(_){} });
 $("f").addEventListener("input", onChange);
 $("f").addEventListener("change", onChange);
