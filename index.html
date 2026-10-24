@@ -71,6 +71,8 @@ details.fold[open] > summary::after{transform:translateY(-30%) rotate(225deg)}
 .fs{font-weight:400;font-size:.92rem;color:var(--muted);font-variant-numeric:tabular-nums}
 .fb{display:flex;flex-direction:column;gap:12px;padding-bottom:18px}
 .fb h3{margin-top:6px}
+details.more{border-top:1px solid var(--line);padding-top:14px}
+details.more > summary{font-size:1.05rem}
 .callout{background:var(--gap-soft);border-radius:12px;padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .banner{background:var(--accent-soft);border-radius:12px;padding:12px 14px;font-size:.95rem;display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
 .banner button{flex:none}
@@ -173,10 +175,10 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
   <main id="view-plan" class="wrap"></main>
 
   <main id="view-form" class="wrap" hidden>
-    <p class="muted">About eight quick sections. Rough numbers are fine. Everything stays on this phone.</p>
+    <p class="muted">Six short sections. Rough numbers are fine. Everything stays on this phone.</p>
     <form id="f" novalidate>
       <fieldset>
-        <legend>You and your household</legend>
+        <legend>1. You and your household</legend>
         <label class="f">Your age<input id="age" type="number" inputmode="numeric" min="18" max="80"></label>
         <div class="f" style="font-weight:700;font-size:.95rem">How you file taxes</div>
         <div class="seg" role="radiogroup" aria-label="How you file taxes">
@@ -184,48 +186,36 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
           <label><input type="radio" name="filing" value="hoh" id="filing-hoh"><span>Single parent</span></label>
           <label><input type="radio" name="filing" value="mfj" id="filing-mfj"><span>Married</span></label>
         </div>
-        <div class="pair">
-          <label class="f">Children under 17<input id="kids" type="number" inputmode="numeric" min="0" max="10"></label>
-          <label class="f" id="wrap-kids6">How many under 6<input id="kids6" type="number" inputmode="numeric" min="0" max="10"></label>
-        </div>
-        <label class="f" id="wrap-oldest">Oldest child's age<small>For college timing.</small><input id="kidOldest" type="number" inputmode="numeric" min="0" max="30"></label>
+        <label class="f">Children under 17<input id="kids" type="number" inputmode="numeric" min="0" max="10"></label>
         <label class="f" id="wrap-spouse">Spouse's yearly pay before taxes<small>Leave 0 if they don't work.</small><input id="spouse" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
       <fieldset>
-        <legend>Your pay</legend>
+        <legend>2. Your pay</legend>
         <div class="seg" role="radiogroup" aria-label="How you're paid">
           <label><input type="radio" name="payMode" value="hourly" id="pay-hourly"><span>By the hour</span></label>
           <label><input type="radio" name="payMode" value="salary" id="pay-salary"><span>Yearly salary</span></label>
         </div>
         <div class="pair" id="wrap-hourly">
           <label class="f">Hourly rate<input id="hourly" type="number" inputmode="decimal" min="0" step="0.01"></label>
-          <label class="f">Usual hours a week<small>Base schedule only</small><input id="hours" type="number" inputmode="decimal" min="0"></label>
+          <label class="f">Usual hours a week<input id="hours" type="number" inputmode="decimal" min="0"></label>
         </div>
         <label class="f" id="wrap-salary">Yearly pay before taxes<input id="salary" type="number" inputmode="decimal" min="0"></label>
         <label class="f">How often you're paid
           <select id="freq"><option value="52">Every week</option><option value="26">Every two weeks</option><option value="24">Twice a month</option><option value="12">Once a month</option></select>
         </label>
-        <label class="f">Take-home per paycheck<small>The amount that lands in your bank on a normal paycheck. This is the most useful number here. Leave blank and we'll estimate it.</small><input id="takehome" type="number" inputmode="decimal" min="0"></label>
-        <label class="f" id="wrap-prem">Health, dental and vision premiums per paycheck<small>On your pay stub. Used to estimate take-home when it's blank.</small><input id="prem" type="number" inputmode="decimal" min="0"></label>
-        <label class="f">Extra shifts, overtime or a second job, per month<small>A typical month, before taxes. Your plan budgets without it.</small><input id="extra" type="number" inputmode="decimal" min="0"></label>
+        <label class="f">Take-home per paycheck<small>What lands in your bank on a normal paycheck. Leave blank and we'll estimate it.</small><input id="takehome" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
       <fieldset>
-        <legend>Retirement plan at work</legend>
+        <legend>3. Retirement plan at work</legend>
         <div class="seg" role="radiogroup" aria-label="Does your job offer a retirement plan">
           <label><input type="radio" name="plan" value="yes" id="plan-yes"><span>Yes</span></label>
           <label><input type="radio" name="plan" value="no" id="plan-no"><span>No</span></label>
           <label><input type="radio" name="plan" value="unsure" id="plan-unsure"><span>Not sure</span></label>
         </div>
         <div id="wrap-plan" style="display:flex;flex-direction:column;gap:14px">
-          <div class="pair">
-            <label class="f">Plan type<select id="ptype"><option value="403b">403(b)</option><option value="401k">401(k)</option></select></label>
-            <label class="f">You put in (% of pay)<input id="pct" type="number" inputmode="decimal" min="0" max="75" step="0.5"></label>
-          </div>
-          <label class="f">Your contributions are
-            <select id="roth"><option value="pre">Pre-tax</option><option value="roth">Roth (after-tax)</option><option value="unsure">Not sure</option></select>
-          </label>
+          <label class="f">You put in (% of pay)<input id="pct" type="number" inputmode="decimal" min="0" max="75" step="0.5"></label>
           <label class="f">Employer match
             <select id="match">
               <option value="unsure">Not sure</option><option value="none">No match</option>
@@ -240,76 +230,113 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
             <label class="f">They match (%)<input id="mpct" type="number" inputmode="decimal" min="0" max="200"></label>
             <label class="f">Of the first (% of pay)<input id="mupto" type="number" inputmode="decimal" min="0" max="20"></label>
           </div>
-          <label class="f">When is the match fully yours?
-            <select id="vest"><option value="0">Right away</option><option value="3">After up to 3 years</option><option value="6">After up to 6 years</option><option value="unsure">Not sure</option></select>
-          </label>
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Bills you must pay, per month</legend>
-        <div class="f" style="font-weight:700;font-size:.95rem">Your home</div>
+        <legend>4. Bills you must pay, per month</legend>
         <div class="seg" role="radiogroup" aria-label="Your home">
           <label><input type="radio" name="housing" value="rent" id="housing-rent"><span>I rent</span></label>
           <label><input type="radio" name="housing" value="own" id="housing-own"><span>I own</span></label>
         </div>
         <label class="f"><span id="rent-label">Rent</span><input id="rent" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Car payment<input id="car" type="number" inputmode="decimal" min="0"></label>
-        <label class="f">Everything else you must pay<small>Utilities, phone, food, gas, insurance, childcare. Not debt payments; those go below.</small><input id="other" type="number" inputmode="decimal" min="0"></label>
+        <label class="f">Everything else you must pay<small>Utilities, phone, food, gas, insurance, childcare. Not debts; those come next.</small><input id="other" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
       <fieldset>
-        <legend>Debts</legend>
-        <p class="muted small">Credit cards, payday or title loans, buy-now-pay-later, medical bills, student or personal loans. Your car loan payment is already in bills.</p>
+        <legend>5. Debts</legend>
+        <p class="muted small">Credit cards, payday loans, buy-now-pay-later, medical bills, student or personal loans.</p>
         <div id="debts" style="display:flex;flex-direction:column;gap:10px"></div>
         <div><button type="button" class="btn small" id="add-debt">Add a debt</button></div>
       </fieldset>
 
       <fieldset>
-        <legend>Savings so far</legend>
-        <label class="f">Cash savings<small>Money you could get to this week, not counting what's needed for this month's bills.</small><input id="cash" type="number" inputmode="decimal" min="0"></label>
-        <label class="f">How much your savings actually grows in a typical month<small>Not counting your retirement plan at work. A guess is fine; 0 is a common, honest answer.</small><input id="actualSave" type="number" inputmode="decimal" min="0"></label>
+        <legend>6. Savings</legend>
+        <label class="f">Cash savings<small>Money you could get to this week, beyond this month's bills.</small><input id="cash" type="number" inputmode="decimal" min="0"></label>
+        <label class="f">How much your savings grows in a typical month<small>Not counting your retirement plan. 0 is a common, honest answer.</small><input id="actualSave" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Retirement savings, all accounts<input id="rbal" type="number" inputmode="decimal" min="0"></label>
-        <label class="f">Years you've worked a job with Social Security taken out<small>A rough guess is fine.</small><input id="years" type="number" inputmode="numeric" min="0" max="60"></label>
-        <label class="f">Pension from your job, per month at retirement<small>Most people leave this 0. Check your benefits statement if you have one.</small><input id="pension" type="number" inputmode="decimal" min="0"></label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Spouse or partner</legend>
-        <div id="wrap-haspartner" style="display:flex;flex-direction:column;gap:10px">
-          <div class="f" style="font-weight:700;font-size:.95rem">Planning retirement together with a partner?</div>
-          <div class="seg" role="radiogroup" aria-label="Planning retirement with a partner">
-            <label><input type="radio" name="hasPartner" value="yes" id="hp-yes"><span>Yes</span></label>
-            <label><input type="radio" name="hasPartner" value="no" id="hp-no"><span>No</span></label>
-          </div>
-        </div>
-        <div id="wrap-partner" style="display:flex;flex-direction:column;gap:14px">
-          <p class="muted small" id="partner-note"></p>
-          <div class="pair">
-            <label class="f">Their age<input id="pAge" type="number" inputmode="numeric" min="18" max="90"></label>
-            <label class="f" id="wrap-ppay">Their yearly pay<input id="pPay" type="number" inputmode="decimal" min="0"></label>
-          </div>
-          <div class="pair">
-            <label class="f">Their retirement savings<input id="pSavings" type="number" inputmode="decimal" min="0"></label>
-            <label class="f">They save per year<small>Including any match</small><input id="pSaveYear" type="number" inputmode="decimal" min="0"></label>
-          </div>
-          <label class="f">Their pension, per month<small>From a hospital, union, government or military job. 0 if none.</small><input id="pPension" type="number" inputmode="decimal" min="0"></label>
-          <label class="f">Their Social Security at 67, per month<small>From ssa.gov/myaccount if they have it. Leave blank and we'll estimate from their pay.</small><input id="pSS" type="number" inputmode="decimal" min="0"></label>
-        </div>
-      </fieldset>
-
-      <fieldset>
-        <legend>Spending in retirement</legend>
-        <p class="muted small">Next Step starts from what you spend today: take-home pay minus what you save. Then it takes out payments that will be gone by 67.</p>
-        <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
-        <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
-        <label class="f">Or enter your own monthly number, in today's dollars<small>Include Medicare premiums and medical costs.</small><input id="spend" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
 
       <div class="btnrow">
         <button type="button" class="btn primary" id="see-plan">See my plan</button>
-        <button type="button" class="btn" id="clear">Start blank</button>
       </div>
+
+      <details class="more" id="more-detail">
+        <summary>Add more detail (optional)</summary>
+        <p class="small muted" style="margin-top:6px">Children's ages, health premiums, extra shifts, pensions, a spouse's savings and retirement spending. Each one sharpens your plan.</p>
+        <div style="display:flex;flex-direction:column;gap:26px;margin-top:18px">
+          <fieldset id="fs-kids">
+            <legend>Children</legend>
+            <div class="pair">
+              <label class="f" id="wrap-kids6">How many under 6<input id="kids6" type="number" inputmode="numeric" min="0" max="10"></label>
+              <label class="f" id="wrap-oldest">Oldest child's age<input id="kidOldest" type="number" inputmode="numeric" min="0" max="30"></label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Paycheck details</legend>
+            <label class="f" id="wrap-prem">Health, dental and vision premiums per paycheck<small>On your pay stub. Makes the take-home estimate more accurate.</small><input id="prem" type="number" inputmode="decimal" min="0"></label>
+            <label class="f">Extra shifts, overtime or a second job, per month<small>Before taxes. Your plan budgets without it.</small><input id="extra" type="number" inputmode="decimal" min="0"></label>
+          </fieldset>
+
+          <fieldset id="fs-plan">
+            <legend>Your retirement plan</legend>
+            <div class="pair">
+              <label class="f">Plan type<select id="ptype"><option value="403b">403(b)</option><option value="401k">401(k)</option></select></label>
+              <label class="f">Contributions are<select id="roth"><option value="pre">Pre-tax</option><option value="roth">Roth</option><option value="unsure">Not sure</option></select></label>
+            </div>
+            <label class="f">When is the match fully yours?
+              <select id="vest"><option value="0">Right away</option><option value="3">After up to 3 years</option><option value="6">After up to 6 years</option><option value="unsure">Not sure</option></select>
+            </label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Social Security and pensions</legend>
+            <label class="f">Years you've worked with Social Security taken out<input id="years" type="number" inputmode="numeric" min="0" max="60"></label>
+            <label class="f">Your pension, per month at retirement<small>Most people leave this 0.</small><input id="pension" type="number" inputmode="decimal" min="0"></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Spouse or partner</legend>
+            <div id="wrap-haspartner" style="display:flex;flex-direction:column;gap:10px">
+              <div class="f" style="font-weight:700;font-size:.95rem">Planning retirement with a partner?</div>
+              <div class="seg" role="radiogroup" aria-label="Planning retirement with a partner">
+                <label><input type="radio" name="hasPartner" value="yes" id="hp-yes"><span>Yes</span></label>
+                <label><input type="radio" name="hasPartner" value="no" id="hp-no"><span>No</span></label>
+              </div>
+            </div>
+            <div id="wrap-partner" style="display:flex;flex-direction:column;gap:14px">
+              <p class="muted small" id="partner-note"></p>
+              <div class="pair">
+                <label class="f">Their age<input id="pAge" type="number" inputmode="numeric" min="18" max="90"></label>
+                <label class="f" id="wrap-ppay">Their yearly pay<input id="pPay" type="number" inputmode="decimal" min="0"></label>
+              </div>
+              <div class="pair">
+                <label class="f">Their retirement savings<input id="pSavings" type="number" inputmode="decimal" min="0"></label>
+                <label class="f">They save per year<small>Including any match</small><input id="pSaveYear" type="number" inputmode="decimal" min="0"></label>
+              </div>
+              <div class="pair">
+                <label class="f">Their pension, per month<input id="pPension" type="number" inputmode="decimal" min="0"></label>
+                <label class="f">Their Social Security at 67<small>Blank: we estimate</small><input id="pSS" type="number" inputmode="decimal" min="0"></label>
+              </div>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Spending in retirement</legend>
+            <p class="muted small">We start from what you spend today, then take out payments gone by 67.</p>
+            <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
+            <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
+            <label class="f">Or your own monthly number, in today's dollars<input id="spend" type="number" inputmode="decimal" min="0"></label>
+          </fieldset>
+
+          <div class="btnrow">
+            <button type="button" class="btn primary" id="see-plan-2">See my plan</button>
+            <button type="button" class="btn" id="clear">Start blank</button>
+          </div>
+        </div>
+      </details>
     </form>
   </main>
 
@@ -1040,8 +1067,8 @@ function fillForm(){
   renderDebts(); toggles();
 }
 function toggles(){
-  $("wrap-kids6").hidden = !(n(S.kids)>0);
-  $("wrap-oldest").hidden = !(n(S.kids)>0);
+  $("fs-kids").hidden = !(n(S.kids)>0);
+  $("fs-plan").hidden = S.plan!=="yes";
   $("wrap-mortoff").hidden = S.housing!=="own";
   $("rent-label").textContent = S.housing==="own" ? "Mortgage, property tax and insurance" : "Rent";
   $("wrap-spouse").hidden = S.filing!=="mfj";
@@ -1083,6 +1110,7 @@ $("f").addEventListener("change", onChange);
 $("debts").addEventListener("click", e=>{ const i=e.target.dataset.del; if(i!=null){ S.debts.splice(+i,1); S.example=false; save(); renderDebts(); render(); } });
 $("add-debt").onclick = ()=>{ S.debts.push({type:"card",balance:"",rate:"",min:""}); S.example=false; save(); renderDebts(); const el=$("d-bal-"+(S.debts.length-1)); if(el) el.focus(); };
 $("see-plan").onclick = ()=>{ show("plan"); };
+$("see-plan-2").onclick = ()=>{ show("plan"); };
 $("clear").onclick = ()=>{ S = JSON.parse(JSON.stringify(BLANK)); save(); fillForm(); render(); };
 
 function show(which){
