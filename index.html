@@ -570,7 +570,18 @@ function retirePlan(s, c){
   if(!first || first.R>67){
     for(let k=1;k<=20;k++){ if(retireAt(s,c,67,k).covered){ fix = {pct:k, age:67}; break; } }
   }
-  return {rows, earliest: first ? first.R : null, fix};
+  // when no age works: what each lever does
+  let levers = null;
+  if(!first){
+    const A = Math.max(67, Math.min(70, Math.ceil(age)));
+    const ra = retireAt(s,c,A), r70 = retireAt(s,c,70);
+    let combo = null;
+    for(let a=Math.max(A+1,68); a<=69 && !combo; a++) for(let k=1;k<=8;k++){ if(retireAt(s,c,a,k).covered){ combo={age:a,pct:k}; break; } }
+    levers = { A, coverPct: ra.need>0 ? Math.round(ra.net/ra.need*100) : 0, net: ra.net, need: ra.need,
+      budget: Math.max(0, ra.net - ra.health), today: c.need,
+      cover70: r70.need>0 ? Math.round(r70.net/r70.need*100) : 0, covered70: r70.covered, combo };
+  }
+  return {rows, earliest: first ? first.R : null, fix, levers};
 }
 
 /* yearly tax in retirement (today's dollars, current law). ss = Social Security, other = pensions + pre-tax withdrawals */
@@ -1009,10 +1020,27 @@ function render(){
   const w = v => (v/scale*100).toFixed(2);
   const who = c.partner ? "your household" : "you";
   const part = (mine, theirs) => c.partner && theirs>0 ? ` (you ${money(mine)}, ${c.married?"spouse":"partner"} ${money(theirs)})` : "";
-  const headline = rp.earliest!=null
+  const L = rp.levers;
+  const headline = L ? `At ${L.A}, income would cover about ${L.coverPct}% of spending` : rp.earliest!=null
     ? (rp.earliest<=Math.max(62,Math.ceil(n(s.age))) && n(s.age)>=62 ? `You could retire now` : `Earliest you could retire: about ${rp.earliest}`)
-    : `Not covered by 70 at today's saving`;
-  const fixLine = rp.fix ? `Saving about ${rp.fix.pct}% more of your pay, starting now, would let ${who} retire at 67.` : (rp.earliest==null ? `Saving more, spending less by then, and working longer all help. Start with the payday plan.` : "");
+    : "";
+  const leverHtml = L ? `
+    <p>That means retiring on a tighter budget: about <b class="num">${money(L.net)} a month</b> after tax, against <b class="num">${money(L.need)}</b> of spending. Social Security will be the base. These close the rest, and they add up:</p>
+    <ul class="plain">
+      ${rp.fix ? `<li><b>Save more.</b> About ${rp.fix.pct}% more of your pay, starting now, covers it at 67.</li>` : `<li><b>Save more.</b> Each 1% more of your pay adds to it; start with the payday plan.</li>`}
+      <li><b>Work longer.</b> Working to 70 raises Social Security by about 24%${L.covered70 ? " and covers it" : ` and covers about ${L.cover70}%`}.</li>
+      <li><b>Spend less by then.</b> A retirement budget of about <b class="num">${money(L.budget)}</b> a month plus health costs works at ${L.A}. A paid-off car, no debts and lower housing costs are the usual ways there.</li>
+      ${L.combo ? `<li><b>A mix.</b> Saving ${L.combo.pct}% more and working to ${L.combo.age} covers it.</li>` : ""}
+    </ul>
+    <p><b>New Jersey help for retirees with lower incomes.</b> Many people who qualify never apply:</p>
+    <ul class="plain small">
+      <li>Senior Freeze: refunds property tax increases for older homeowners</li>
+      <li>PAAD and Medicare Extra Help: lower prescription costs</li>
+      <li>Medicare Savings Programs: can pay your Medicare premiums</li>
+      <li>SNAP food benefits, and NJ 211 for everything else</li>
+    </ul>
+    <p class="small muted">These estimates lean cautious: they count health insurance before 65 without subsidies and assume you spend all your take-home now.</p>` : "";
+  const fixLine = L ? "" : rp.fix ? `Saving about ${rp.fix.pct}% more of your pay, starting now, would let ${who} retire at 67.` : (rp.earliest==null ? `Saving more, spending less by then, and working longer all help. Start with the payday plan.` : "");
   let verdict;
   if(ra.covered) verdict = `<p>At ${ra.R}, that covers the <b class="num">${money(ra.need)} a month</b> ${who} would spend${total>ra.need+1?`, with about ${money(total-ra.need)} to spare`:""}.</p>`;
   else verdict = `<p>At ${ra.R}, ${who} would spend about <b class="num">${money(ra.need)} a month</b>, so ${who} would be about <b class="num">${money(ra.short)} a month short</b>.</p>`;
@@ -1029,6 +1057,7 @@ function render(){
   h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${headline}</span></summary><div class="fb">
     <div class="money">${headline}.</div>
     ${fixLine?`<p>${fixLine}</p>`:""}
+    ${leverHtml}
     <div><p class="small muted" style="margin-bottom:6px">Tap an age. ✓ means income covers spending; otherwise it shows the monthly shortfall.</p><div class="agerow">${chips}</div></div>
     <p>If ${who==="you"?"you stop":"you both stop"} working at ${ra.R}, in today's dollars, ${who} would have about:</p>
     <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
