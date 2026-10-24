@@ -754,6 +754,35 @@ function stepDetail(id, s, c){
   }
 }
 
+function paydayPlan(s, c, steps){
+  if(c.left<=0) return null;
+  const ppy = n(s.freq)||26;
+  const leftPer = c.left*12/ppy;
+  const savePer = c.saveKnown ? c.actualSave*12/ppy : null;
+  const P = (savePer!=null && savePer<leftPer) ? savePer + (leftPer-savePer)/2 : leftPer;
+  let rem = P; const lines = [];
+  const take = (amt, label, note) => { const a = Math.max(0, Math.min(rem, amt)); if(a>=1){ lines.push({a, label, note}); rem -= a; } };
+  const b = s.buckets||{};
+  const bucketPer = BUCKETS.reduce((a,[k])=>a+n(b[k]),0)/ppy;
+  const open = steps.filter(x=>["cushion","match","debt","emergency","retire"].includes(x.id) && x.status!=="done" && x.status!=="skip");
+  const bounded = id => id==="cushion" || id==="match";
+  let i = 0;
+  while(i<open.length && bounded(open[i].id)){
+    const id = open[i].id;
+    if(id==="cushion") take(c.cushionTarget-c.cash, "Starter cushion", `until it reaches ${money(c.cushionTarget)}`);
+    if(id==="match" && c.terms && c.terms!=="unsure"){
+      const add = c.m.base*(c.terms.upto-c.pct)/100/ppy;
+      take(s.roth!=="roth" ? add*(1-Math.max(0,c.preSaves)) : add, `Raise your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${c.terms.upto}%`, "comes out of your paycheck; this is what it costs after tax");
+    }
+    i++;
+  }
+  if(bucketPer>0) take(bucketPer, "Costs you know are coming", rem<bucketPer ? `start with this much of the ${money(bucketPer)} total` : "split across your buckets");
+  const nxt = open[i];
+  const label = !nxt ? "Next goals" : nxt.id==="debt" ? `Extra on your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} at ${n(c.expensive[0].rate)}%` : nxt.id==="emergency" ? "Three months of savings" : nxt.id==="retire" ? "More retirement saving" : "Next goals";
+  take(rem, label, nxt && nxt.id==="debt" ? "on top of the minimums; highest rate first" : "");
+  return {P, lines, leftPer, savePer, ppy};
+}
+
 const BUCKETS = [
   ["repairs","Car repairs and upkeep","Tires, brakes, inspection"],
   ["gifts","Holidays, birthdays, school costs",""],
@@ -805,9 +834,20 @@ function render(){
       ${c.extraNet>0?`<div class="row"><span class="muted">Extra shifts, after tax (not counted above)</span><span class="muted">+${money(c.extraNet)}</span></div>`:""}
     </div>
     ${c.estimated?`<p class="small muted">Take-home is estimated${c.m.prem>0?"":" and doesn't include health premiums"}. For a better number, add your real paycheck amount in My numbers.</p>`:""}
-    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The other ${money(c.left-c.actualSave)} goes to everyday spending beyond must-pay bills. That's normal. The steps below only work if your step's money moves first, on payday, before it gets spent.</p><p class="small">Set an automatic transfer for the day after payday. Start with half of the gap, ${money((c.left-c.actualSave)/2)} a month, and raise it as you go.</p></div>` : ""}
+    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The other ${money(c.left-c.actualSave)} goes to everyday spending beyond must-pay bills. That's normal. The steps below only work if your step's money moves first, on payday, before it gets spent.</p><p class="small">Your payday plan below starts with what you save now plus half of the rest, and puts it in order.</p></div>` : ""}
     ${(!neg && !c.saveKnown) ? `<p class="small muted">How much does your savings actually grow each month? Add it in My numbers. It's the best check on whether this money is really available.</p>` : ""}
   </section>`);
+
+  // payday plan
+  const pp = paydayPlan(s, c, steps);
+  if(pp && pp.lines.length){
+    h.push(`<section aria-labelledby="h-pay"><h2 id="h-pay">Your payday plan</h2>
+      <p>Each paycheck, move about <b class="num">${money(pp.P)}</b>, in this order:</p>
+      <div class="rows">${pp.lines.map(l=>`<div class="row"><span>${esc(l.label)}${l.note?`<small class="muted" style="display:block">${esc(l.note)}</small>`:""}</span><span>${money(l.a)}</span></div>`).join("")}
+        <div class="row total"><span>Moves each payday</span><span>${money(pp.P)}</span></div></div>
+      <p class="small muted">Set these up as automatic transfers or payroll changes for the day after payday. The rest of your take-home is for everyday spending.${pp.savePer!=null && pp.savePer<pp.leftPer ? ` This is about ${money(pp.P-pp.savePer)} a paycheck more than you save now. If that's too much, start lower; keep the order.` : ""}</p>
+    </section>`);
+  }
 
   // current step
   const prog = d.progress ? `<div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${Math.round(d.progress[1])}" aria-valuenow="${Math.round(d.progress[0])}"><i style="width:${Math.min(100, d.progress[1]>0? d.progress[0]/d.progress[1]*100 : 0)}%"></i></div><p class="small muted num" style="margin-top:4px">${money(d.progress[0])} of ${money(d.progress[1])}</p></div>` : "";
@@ -893,6 +933,7 @@ function render(){
       <span class="l4">Taxes −${money(c.retTax)}</span>
     </div>
     ${verdict}
+    ${gross>0 && c.retTax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
     <details><summary>How spending at 67 is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Add Medicare premiums and other medical costs, about $200 to $400 a month per person, if you spend less on health care now. You can enter your own number in My numbers.</p></div></details>
     <p>Each 1% more of your pay saved adds about <b class="num">${money(c.perPctNet)} a month</b> after tax at 67.</p>
     <p class="small muted">Social Security is a rough estimate from pay and years worked${c.p.ssEstimated?", for both of you":""}; ${c.married?"a spouse gets at least half the other's benefit. ":""}see real numbers at ssa.gov/myaccount. Savings assume ${Math.round(RULES.realReturn*100)}% growth a year after inflation and ${Math.round(RULES.drawRate*100)}% taken out each year. Taxes use today's federal and New Jersey rules; New Jersey doesn't tax Social Security.${s.roth==="roth"?" Your Roth savings come out tax-free.":""} Everyone is counted at their own age 67.</p>
