@@ -647,7 +647,10 @@ function compute(s){
   const predatory = debts.filter(d=>d.type==="payday" || n(d.rate)>=36);
   const expensive = debts.filter(d=>n(d.rate)>=10 || d.type==="payday").sort((a,b)=>n(b.rate)-n(a.rate));
   const cushionTarget = predatory.length ? 500 : 1000;
-  const efTarget = 3*(bills+mins);
+  const late = n(s.age)>=50;
+  const twoIncomes = s.filing==="mfj" && n(s.spouse)>0;
+  const efMonths = late && twoIncomes ? 2 : 3;
+  const efTarget = efMonths*(bills+mins);
   const cash = n(s.cash);
 
   // Social Security, today's dollars, from current pay
@@ -718,7 +721,7 @@ function compute(s){
   const morePct = short>0 && perPctNet>0 ? Math.ceil(short/perPctNet) : 0;
 
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
-          preSaves,testPct,predatory,expensive,cushionTarget,efTarget,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
+          preSaves,testPct,predatory,expensive,cushionTarget,efTarget,efMonths,late,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
           saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA};
 }
@@ -743,7 +746,7 @@ function buildSteps(s, c){
   return order.map((id,i)=>({id, n:i+1, status: id===cur ? "now" : st[id]}));
 }
 const TITLES = {number:"Know your number", cushion:"Starter cushion", match:"Get the full match", debt:"Stop expensive debt",
-  taxes:"Check your taxes", emergency:"Three months of savings", retire:"Save for retirement", goals:"Next goals"};
+  taxes:"Check your taxes", emergency:"Emergency savings", retire:"Save for retirement", goals:"Next goals"};
 
 function stepDetail(id, s, c){
   const avail = Math.max(0,c.left);
@@ -810,6 +813,7 @@ function stepDetail(id, s, c){
   }
   case "debt": {
     const list = c.expensive;
+    void 0;
     if(!list.length) return { h:"No expensive debt", why:"Nothing you owe charges 10% or more. Keep paying on time and avoid new high-rate debt.", how:["Keep paying every bill on time; it builds your credit score."] };
     const top = list[0];
     const mo = payoffMonths(list, withExtra);
@@ -820,6 +824,14 @@ function stepDetail(id, s, c){
       "A nonprofit credit counselor (nfcc.org) can set up a debt management plan with lower rates. Avoid debt-settlement companies that charge fees up front.",
       "Stop new buy-now-pay-later purchases until this step is done."
     ];
+    if(s.plan==="yes" && c.pct>0){
+      const keep = c.terms && c.terms!=="unsure" ? c.terms.upto : 0;
+      if(c.pct>keep){
+        const ppy = n(s.freq)||26, cut = c.m.base*(c.pct-keep)/100/ppy;
+        const up = s.roth==="roth" ? cut : cut*(1-Math.max(0,c.preSaves));
+        how.push(`To pay it off faster, you could lower your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${keep>0?keep+"% for now, which still gets the full match":"a smaller amount for now"}. That frees ${money(cut)} a paycheck, but your take-home rises only about ${money(up)}${s.roth==="roth"?"":", because that money is now taxed"}. Send exactly that much to the card, and put a restart date on your calendar: the paycheck after the card hits zero.`);
+      }
+    }
     if(c.predatory.length) how.unshift("Payday loans are illegal in New Jersey. If an online lender gave you one, you can file a complaint with the NJ Department of Banking and Insurance (nj.gov/dobi), and you may not owe what they claim. Get free help from Legal Services of New Jersey (lsnj.org).");
     return { h:`Pay off ${money(total)} of expensive debt`,
       why:`${list.length>1?"These debts charge":"This debt charges"} ${n(list[list.length-1].rate)===n(top.rate) ? n(top.rate)+"%" : n(list[list.length-1].rate)+"% to "+n(top.rate)+"%"} a year. Paying ${list.length>1?"them":"it"} off is a guaranteed return at that rate.`,
@@ -852,10 +864,20 @@ function stepDetail(id, s, c){
   }
   case "emergency": {
     const t = c.efTarget, mo = monthsTo(t,c.cash,withExtra);
-    return { h:`Grow savings to ${money(t)}`, why:"Three months of must-pay bills. That covers a job change, a medical leave or a big repair without new debt.",
+    const first = Math.max(c.cushionTarget, 3000);
+    return { h:`Grow savings to ${money(t)}`,
+      why:`${c.efMonths===2?"Two":"Three"} months of must-pay bills. That covers a job change, a medical leave or a big repair without new debt.${c.efMonths===2?" Two months is enough for a household with two steady incomes this close to retirement.":""}`,
       progress:[c.cash,t],
-      money: withExtra>0 ? `At ${money(withExtra)} a month, about ${duration(mo)}. Keep saving for retirement at your current rate meanwhile.` : null,
-      how:[ "Keep this in the same no-fee savings account as your cushion, or a high-yield one.", extraLine, "When you get a raise, send half of it here until this step is done." ].filter(Boolean)};
+      money: withExtra>0 ? `At ${money(withExtra)} a month, ${duration(mo)}.${c.pp && c.pp.lines.some(l=>l.id==="retire") ? ` Your payday plan also adds to your ${s.ptype==="401k"?"401(k)":"403(b)"} at the same time, because retirement saving can't wait at your age.` : " Keep saving for retirement at your current rate meanwhile."}` : null,
+      how:[
+        c.cash<first ? `First milestone: about ${money(first)}. That covers the biggest surprise most households face in a year: a car repair, a home repair or a health plan deductible. If your deductible is higher, aim for that.` : null,
+        "Keep it in a separate savings account with named buckets, so it doesn't blend into spending.",
+        "Moving money out of an online bank takes a day or two. For a surprise bill, use a card, then pay it off in full from savings that month.",
+        extraLine,
+        c.late && s.plan==="yes" ? `At your age your ${s.ptype==="401k"?"401(k)":"403(b)"} is also a backstop: if you leave your job at 55 or older you can take money out without the 10% penalty, and from 59½ even while you're still working. Taxes still apply.` : null,
+        n(s.endCosts)>0 ? `When college or other costs end, split that ${money(n(s.endCosts))} a month: half here until this is done, half to retirement.` : "When you get a raise, send half of it here until this step is done.",
+        "Refill it right after you use it, before anything else gets extra money."
+      ].filter(Boolean)};
   }
   case "retire": {
     const gapPct = Math.max(0, 15-c.totalRate);
@@ -903,7 +925,8 @@ function paydayPlan(s, c, steps){
   const nxt = open[i];
   const bucketCap = nxt && nxt.id==="debt" ? Math.min(bucketPer, rem/2) : bucketPer;   // don't starve a high-rate card
   if(bucketPer>0) take(bucketCap, "Costs you know are coming", bucketCap<bucketPer-1 ? `start with this much of the ${money(bucketPer)} total` : "split across your buckets", "buckets");
-  const label = !nxt ? "Next goals" : nxt.id==="debt" ? `Extra on your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} at ${n(c.expensive[0].rate)}%` : nxt.id==="emergency" ? "Three months of savings" : nxt.id==="retire" ? "More retirement saving" : "Next goals";
+  if(nxt && nxt.id==="emergency" && c.late && steps.some(x=>x.id==="retire" && x.status!=="done")) take(rem/2, `More into your ${s.ptype==="401k"?"401(k)":"403(b)"}`, "at your age, retirement saving runs side by side with emergency savings", "retire");
+  const label = !nxt ? "Next goals" : nxt.id==="debt" ? `Extra on your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} at ${n(c.expensive[0].rate)}%` : nxt.id==="emergency" ? "Emergency savings" : nxt.id==="retire" ? "More retirement saving" : "Next goals";
   take(rem, label, nxt && nxt.id==="debt" ? "on top of the minimums; highest rate first" : "", nxt ? nxt.id : "goals");
   return {P, lines, leftPer, savePer, ppy};
 }
@@ -1003,7 +1026,7 @@ function render(){
     match: c.terms===null ? (s.plan==="no"?"No plan at work":"No match offered") : c.terms==="unsure" ? "Match not known yet" : `${c.pct}% of ${c.terms.upto}% needed`,
     debt: c.expensive.length ? `${money(c.expensive.reduce((a,x)=>a+n(x.balance),0))} at 10% or more` : "None at 10% or more",
     taxes: s.taxDone ? "Checked" : "Credits, W-4, free filing",
-    emergency: `${c.efTarget>0?(Math.round(c.cash/(c.efTarget/3)*10)/10):0} of 3 months`,
+    emergency: `${c.efTarget>0?(Math.round(c.cash/(c.efTarget/c.efMonths)*10)/10):0} of ${c.efMonths} months`,
     retire: `${Math.round(c.totalRate*10)/10}% of pay, with match`,
     goals: "Car, home, education"
   };
@@ -1110,6 +1133,7 @@ function render(){
     also.push(`<b>College${yrs>0?`, in about ${plural(yrs,"year")}`:""}.</b> Open an NJBEST 529 plan and set up a small automatic deposit. File the FAFSA every year starting senior year of high school; New Jersey's Tuition Aid Grant and community college grants depend on it. Keep saving for retirement first. Loans exist for college, not for retirement.`);
   }
   if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more (2026 limits). Useful once the earlier steps are done.`);
+  if(n(s.endCosts)>0) also.push(`<b>When college or other costs end.</b> That frees about <span class="num">${money(n(s.endCosts))}</span> a month. Send it straight to savings the month it ends${n(s.age)>=50?`: half to your ${s.ptype==="401k"?"401(k)":"403(b)"}, where you can put in more from 50 and much more from 60 to 63, and half to emergency savings until that's done`:""}, before it gets absorbed into spending.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
 
 
