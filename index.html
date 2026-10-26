@@ -338,6 +338,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
             <p class="muted small">We start from what you spend today, then take out payments gone by 67.</p>
             <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
             <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
+            <label class="f">Costs that will end before you retire, per month<small>College, child care, help for grown kids. They're in what you spend now but won't be then.</small><input id="endCosts" type="number" inputmode="decimal" min="0"></label>
             <label class="f">Or your own monthly number, in today's dollars<input id="spend" type="number" inputmode="decimal" min="0"></label>
           </fieldset>
 
@@ -572,7 +573,10 @@ function retirePlan(s, c){
   const first = rows.find(r=>r.covered);
   let fix = null;
   if(!first || first.R>67){
-    for(let k=1;k<=20;k++){ if(retireAt(s,c,67,k).covered){ fix = {pct:k, age:67}; break; } }
+    const cap = c.m.base>0 ? (s.plan==="yes"
+      ? (RULES.fed.deferralLimit + (age>=50 ? RULES.fed.catchUp50 : 0))/c.m.base*100 - c.pct
+      : (RULES.fed.iraLimit + (age>=50 ? 1100 : 0))/c.m.base*100) : 0;   // legal limits, 2026
+    for(let k=1;k<=Math.min(20,Math.floor(cap));k++){ if(retireAt(s,c,67,k).covered){ fix = {pct:k, age:67}; break; } }
   }
   // when no age works: what each lever does
   let levers = null;
@@ -703,7 +707,8 @@ function compute(s){
   const spendNow = take - (saveKnown ? actualSave : 0);
   const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) : 0;
   const dropCar = s.carOff!==false ? n(s.car) : 0;
-  const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins);
+  const dropEnd = n(s.endCosts);
+  const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins - dropEnd);
   const spendEntered = n(s.spend)>0;
   const need = spendEntered ? n(s.spend) : needAuto;
   const netShare = retIncome>0 ? retNet/retIncome : 1;
@@ -715,7 +720,7 @@ function compute(s){
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
-          saveKnown,actualSave,spendNow,dropMort,dropCar,needAuto,pPIA};
+          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA};
 }
 
 /* ===== steps ===== */
@@ -730,7 +735,7 @@ function buildSteps(s, c){
     debt: c.expensive.length ? "todo" : "done",
     taxes: s.taxDone ? "done" : (!(c.m.eic||c.m.njEitc||c.m.actc||c.m.njCtc||c.m.saver) && !c.m.sRate && c.m.refund<300 && !(n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13)))) ? "skip" : "todo",
     emergency: c.cash>=c.efTarget && c.efTarget>0 ? "done" : "todo",
-    retire: c.totalRate>=15 ? "done" : "todo",
+    retire: (c.totalRate>=15 && (()=>{ const r=retirePlan(s,c); return r.earliest!=null && r.earliest<=67; })()) ? "done" : "todo",
     goals: "todo"
   };
   if(s.plan==="unsure") st.match = "todo";
@@ -817,7 +822,7 @@ function stepDetail(id, s, c){
     ];
     if(c.predatory.length) how.unshift("Payday loans are illegal in New Jersey. If an online lender gave you one, you can file a complaint with the NJ Department of Banking and Insurance (nj.gov/dobi), and you may not owe what they claim. Get free help from Legal Services of New Jersey (lsnj.org).");
     return { h:`Pay off ${money(total)} of expensive debt`,
-      why:`These debts charge ${n(list[list.length-1].rate)}% to ${n(top.rate)}% a year. Paying them off is a guaranteed return at that rate.`,
+      why:`${list.length>1?"These debts charge":"This debt charges"} ${n(list[list.length-1].rate)===n(top.rate) ? n(top.rate)+"%" : n(list[list.length-1].rate)+"% to "+n(top.rate)+"%"} a year. Paying ${list.length>1?"them":"it"} off is a guaranteed return at that rate.`,
       list: list.map(d=>`${DEBT_TYPES[d.type]||"Debt"}: ${money(n(d.balance))} at ${n(d.rate)}%`),
       money: mo ? `With about ${money(withExtra)} a month on top of minimums${c.pp?" from your payday plan":""}, they're gone in ${duration(mo)}.` : `At your current payments these won't shrink. Start with the credit counselor below.`,
       how};
@@ -1061,7 +1066,8 @@ function render(){
       <div class="row"><span>What you spend today${c.saveKnown?"":" (assumes nothing is saved)"}</span><span>${money(c.spendNow)}</span></div>
       ${c.dropMort>0?`<div class="row"><span>Mortgage paid off</span><span>−${money(c.dropMort)}</span></div>`:""}
       ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
-      ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}`) + `
+      ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
+      ${c.dropEnd>0?`<div class="row"><span>College and other costs ended</span><span>−${money(c.dropEnd)}</span></div>`:""}`) + `
       <div class="row"><span>${ra.pre65?"Health insurance until 65":"Medicare premiums"}</span><span>+${money(ra.health)}</span></div>
       <div class="row total"><span>Spending at ${ra.R}</span><span>${money(ra.need)}</span></div>
     </div>`;
@@ -1172,7 +1178,7 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
 const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
