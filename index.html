@@ -283,6 +283,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
 
           <fieldset>
             <legend>Paycheck details</legend>
+            <label class="f" id="wrap-spousetake">Spouse's take-home per paycheck<small>Teachers and other public workers pay into a pension from each check, so their take-home is lower than taxes alone suggest. Leave blank and we'll estimate it.</small><input id="spouseTake" type="number" inputmode="decimal" min="0"></label>
             <label class="f" id="wrap-prem">Health, dental and vision premiums per paycheck<small>On your pay stub. Makes the take-home estimate more accurate.</small><input id="prem" type="number" inputmode="decimal" min="0"></label>
             <label class="f">Extra shifts, overtime or a second job, per month<small>Before taxes. Your plan budgets without it.</small><input id="extra" type="number" inputmode="decimal" min="0"></label>
           </fieldset>
@@ -302,6 +303,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
             <legend>Social Security and pensions</legend>
             <label class="f">Years you've worked with Social Security taken out<input id="years" type="number" inputmode="numeric" min="0" max="60"></label>
             <label class="f">Your pension, per month at retirement<small>Most people leave this 0.</small><input id="pension" type="number" inputmode="decimal" min="0"></label>
+            <label class="f">Does it rise with inflation?<select id="penCola"><option value="yes">Yes</option><option value="no">No, it stays flat</option></select></label>
           </fieldset>
 
           <fieldset>
@@ -325,6 +327,7 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
               </div>
               <div class="pair">
                 <label class="f">Their pension, per month<input id="pPension" type="number" inputmode="decimal" min="0"></label>
+                <label class="f">Rises with inflation?<small>New Jersey teacher and state pensions currently don't.</small><select id="pPenCola"><option value="yes">Yes</option><option value="no">No, it stays flat</option></select></label>
                 <label class="f">Their Social Security at 67<small>Blank: we estimate</small><input id="pSS" type="number" inputmode="decimal" min="0"></label>
               </div>
             </div>
@@ -403,7 +406,8 @@ const RULES = {
   },
   ss:{ bend1:1286, bend2:7749 },
   realReturn:.04, drawRate:.04,
-  health:{ pre65:800, medicare:200 }
+  health:{ pre65:800, medicare:200 },
+  flatPension:.8   // average buying power of a flat pension over 20 years at 2.5% inflation
 };
 
 /* ===== state ===== */
@@ -419,7 +423,7 @@ const EXAMPLE = {
 };
 const BLANK = {
   example:false, age:30, filing:"single", kids:0, kids6:0, kidOldest:"", spouse:0, prem:0, housing:"rent", actualSave:"", mortgageOff:true, carOff:true,
-  buckets:{repairs:1200, gifts:800, vacation:0, car:0, yearly:0},
+  buckets:{repairs:1200, gifts:800, vacation:0, car:0, yearly:0}, spouseTake:"", penCola:"yes", pPenCola:"yes",
   payMode:"hourly", hourly:0, hours:40, salary:0, freq:26, takehome:"", extra:0,
   plan:"unsure", ptype:"403b", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
   rent:0, car:0, other:0, debts:[], cash:0, rbal:0, years:5, pension:0, taxDone:false,
@@ -487,7 +491,7 @@ function taxModel(s, opts={}){
   const fedWithhold = Math.max(0, tax-ctcNonref);
   const fedNet = tax - ctcNonref - saver - actc - eic;
 
-  const njIncome = wages - prem - (s.ptype==="401k" ? pre : 0);
+  const njIncome = wages - (s.ptype==="401k" ? pre : 0);   // NJ taxes 403(b) money and salary-reduction health premiums
   const exem = (f==="mfj"?2:1)*J.exemption + kids*J.dependentExemption;
   const njTaxable = Math.max(0, njIncome - exem);
   const noTax = njIncome <= (f==="single" ? J.noTaxAtOrBelow.single : J.noTaxAtOrBelow.other);
@@ -545,9 +549,9 @@ function retireAt(s, c, R, addPct=0){
     ssP = c.pPIA*claimF(pa);
     if(c.married){ ssOwn = Math.max(ssOwn, .5*c.pPIA*spouseF(R)); ssP = Math.max(ssP, .5*ownPIA*spouseF(pa)); }
     let pb = n(s.pSavings); for(let y=0;y<yrs;y++) pb = pb*(1+RULES.realReturn) + n(s.pSaveYear);
-    psav = pb*draw/12; ppen = n(s.pPension);
+    psav = pb*draw/12; ppen = n(s.pPension)*(s.pPenCola==="no" ? RULES.flatPension : 1);
   }
-  const pen = n(s.pension);
+  const pen = n(s.pension)*(s.penCola==="no" ? RULES.flatPension : 1);
   const gross = ssOwn + sav + pen + ssP + psav + ppen;
   const ownTaxable = s.roth==="roth" ? 0 : sav;
   let tax;
@@ -610,11 +614,11 @@ function compute(s){
   const ppy = n(s.freq)||26;
   let takeYear;
   const estimated = !(n(s.takehome)>0);
-  if(estimated){ takeYear = m.wages - m.withheld - m.contrib - m.prem; }
-  else {
-    const spouseNet = m.spouse * (m.wages>0 ? 1 - m.withheld/m.wages : 0);
-    takeYear = n(s.takehome)*ppy + spouseNet;
-  }
+  const spouseEst = m.spouse * (m.wages>0 ? 1 - m.withheld/m.wages : 0);
+  const spouseKnown = s.filing==="mfj" && n(s.spouseTake)>0;
+  const spouseNet = spouseKnown ? n(s.spouseTake)*ppy : spouseEst;
+  if(estimated){ takeYear = m.wages - m.withheld - m.contrib - m.prem - spouseEst + spouseNet; }
+  else takeYear = n(s.takehome)*ppy + spouseNet;
   const take = takeYear/12;
   const bills = n(s.rent)+n(s.car)+n(s.other);
   const debts = (s.debts||[]).filter(d=>n(d.balance)>0);
@@ -724,7 +728,7 @@ function buildSteps(s, c){
     cushion: c.cash>=c.cushionTarget ? "done" : "todo",
     match: (s.plan==="no" || c.terms===null) ? "skip" : (c.terms==="unsure" || s.plan==="unsure") ? "todo" : (c.pct>=c.terms.upto ? "done" : "todo"),
     debt: c.expensive.length ? "todo" : "done",
-    taxes: s.taxDone ? "done" : "todo",
+    taxes: s.taxDone ? "done" : (!(c.m.eic||c.m.njEitc||c.m.actc||c.m.njCtc||c.m.saver) && !c.m.sRate && c.m.refund<300 && !(n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13)))) ? "skip" : "todo",
     emergency: c.cash>=c.efTarget && c.efTarget>0 ? "done" : "todo",
     retire: c.totalRate>=15 ? "done" : "todo",
     goals: "todo"
@@ -738,13 +742,16 @@ const TITLES = {number:"Know your number", cushion:"Starter cushion", match:"Get
 
 function stepDetail(id, s, c){
   const avail = Math.max(0,c.left);
-  const withExtra = avail + Math.max(0,c.extraNet);
+  const planned = k => { if(!c.pp) return null; const a = c.pp.lines.filter(l=>l.id===k).reduce((x,l)=>x+l.a,0); return a*c.pp.ppy/12; };
+  const forStep = k => { const p = planned(k); return (p==null ? avail : p) + Math.max(0,c.extraNet); };
+  const withExtra = forStep(id);
   const extraLine = c.extraNet>0 ? `Extra shifts add about ${money(c.extraNet)} a month after tax. Send that here too.` : null;
   const L = [];
   switch(id){
   case "number": {
     const gap = -c.left;
-    return { gap:true, h:`Close a gap of ${money(gap)} a month`,
+    const refundLine = c.m.refund>=500 ? `You'll likely get about ${money(c.m.refund)} back when you file, mostly from credits for working families. Plan now to use it for a cushion and to pay down your highest-rate card, and file free (irs.gov/vita) so none of it goes to a preparer.` : null;
+    return { gap:true, h:`Close a gap of ${money(gap)} a month`, extra: refundLine,
       why:`Your must-pay bills and debt minimums are ${money(gap)} a month more than your take-home pay. Closing this comes first, because every other step needs a little room each month.`,
       money: c.extraNet>0 ? (c.extraNet>=gap ? `Your extra-shift money, about ${money(c.extraNet)} a month after tax, would cover it. Use it here until base pay and bills line up.` : `Extra shifts bring in about ${money(c.extraNet)} a month after tax. That covers part of the gap.`) : null,
       how:[
@@ -761,7 +768,7 @@ function stepDetail(id, s, c){
     return { h:`Save a starter cushion of ${money(t)}`,
       why: c.predatory.length ? `A first ${money(t)} keeps a surprise from sending you back to a payday lender. Then the next step is paying that loan off.` : `Enough that a flat tire or a short paycheck doesn't turn into an overdraft fee or a payday loan.`,
       progress:[c.cash,t],
-      money: withExtra>0 ? `Put ${money(withExtra)} a month here and you'll have it in ${duration(mo)}.` : `You need ${money(need)} more. Even $10 a paycheck counts.`,
+      money: withExtra>0 ? `Your payday plan puts about ${money(withExtra)} a month here, so you'll have it in ${duration(mo)}.` : `You need ${money(need)} more. Even $10 a paycheck counts.`,
       how:[
         "Open a savings account separate from checking, at a credit union or an online bank with no fees and no minimum balance.",
         "Set an automatic transfer for payday, even $20. Money you never see is easier to save.",
@@ -791,7 +798,7 @@ function stepDetail(id, s, c){
       money:`Costs you about ${money(afterTax)} a paycheck. Your employer adds about ${money(missed/(n(s.freq)||26))} more each paycheck.`,
       how:[
         `Log in to your benefits website, open the retirement plan, and change your contribution to ${t.upto}%. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
-        c.preSaves>=0.15 ? "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later." : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : "Pre-tax or Roth both work at your income. Step \"Check your taxes\" shows the numbers.",
+        c.preSaves>=0.15 ? "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later." : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : `Pre-tax or Roth both work at your income: each $100 pre-tax saves about $${Math.round(c.preSaves*100)} in tax now.`,
         "If you're asked to pick investments, see \"Choosing investments\" below. Usually that means a low-cost target-date index fund, or the plan's cheapest broad index fund.",
         vest
       ].filter(Boolean)};
@@ -812,7 +819,7 @@ function stepDetail(id, s, c){
     return { h:`Pay off ${money(total)} of expensive debt`,
       why:`These debts charge ${n(list[list.length-1].rate)}% to ${n(top.rate)}% a year. Paying them off is a guaranteed return at that rate.`,
       list: list.map(d=>`${DEBT_TYPES[d.type]||"Debt"}: ${money(n(d.balance))} at ${n(d.rate)}%`),
-      money: mo ? `With ${money(withExtra)} a month on top of minimums, they're gone in ${duration(mo)}.` : `At your current payments these won't shrink. Start with the credit counselor below.`,
+      money: mo ? `With about ${money(withExtra)} a month on top of minimums${c.pp?" from your payday plan":""}, they're gone in ${duration(mo)}.` : `At your current payments these won't shrink. Start with the credit counselor below.`,
       how};
   }
   case "taxes": {
@@ -823,6 +830,7 @@ function stepDetail(id, s, c){
     if(m.actc>0) credits.push(`Refundable part of the Child Tax Credit: about ${money(m.actc)}`);
     if(m.njCtc>0) credits.push(`New Jersey Child Tax Credit: about ${money(m.njCtc)}`);
     if(m.saver>0) credits.push(`Saver's Credit for retirement saving: about ${money(m.saver)}`);
+    if(n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13))) credits.push(`Child and Dependent Care Credit, if you pay for child care: federal and New Jersey`);
     const rp = Math.round(c.preSaves*100);
     const rothLine = `Each $100 you put in pre-tax lowers your total tax this year by about $${rp}, counting federal tax, New Jersey tax and credits.` +
       (s.ptype!=="401k" ? " New Jersey doesn't give a tax break for 403(b) money, so that part comes from federal tax and credits only." : "") +
@@ -846,14 +854,17 @@ function stepDetail(id, s, c){
   }
   case "retire": {
     const gapPct = Math.max(0, 15-c.totalRate);
-    return { h:`Save 15% for retirement`, why:`Counting your employer's match, you're saving about ${Math.round(c.totalRate*10)/10}% of pay. 15% in total is a strong target. Get there a little at a time.`,
+    const rpx = retirePlan(s, c);
+    const ageLine = rpx.earliest!=null && rpx.earliest<=67 ? ` At this rate you could retire at about ${rpx.earliest}.` : rpx.fix ? ` To retire at 67, save about ${rpx.fix.pct}% more of your pay.` : "";
+    return { h:`Save 15% for retirement`, why:`Counting your employer's match, you're saving about ${Math.round(c.totalRate*10)/10}% of pay. 15% in total is a strong target. Get there a little at a time.${ageLine}`,
       money: `Raise it by 1% now. That's about ${money(c.m.base*.01/(n(s.freq)||26))} a paycheck before tax.`,
       how:[
         "Turn on automatic yearly increases if your plan has them. Otherwise raise it 1% every January and with every raise.",
+        n(s.age)>=50 ? `At ${Math.floor(n(s.age))} you can put in more than the usual ${money(RULES.fed.deferralLimit)} limit: ${money(RULES.fed.catchUp50)} more a year${n(s.age)>=60&&n(s.age)<=63?`, or ${money(RULES.fed.catchUp60)} more from 60 to 63`:""}.` : null,
         s.plan==="no" ? `No plan at work? Open a Roth IRA at a low-cost firm and set up an automatic deposit. The 2026 limit is ${money(RULES.fed.iraLimit)}.` : "Once you're past the match, a Roth IRA is another good place for savings.",
         "Pick low-cost funds (see \"Choosing investments\" below) and leave them alone.",
         "Avoid borrowing from or cashing out your retirement account, even when changing jobs. Roll it over instead."
-      ]};
+      ].filter(Boolean)};
   }
   case "goals": return { h:"Pick your next goal", why:"The basics are covered. Now save for what's next, in the order that matters to you.",
       how:[ "A car without a high-rate loan: save a down payment and get pre-approved at a credit union.",
@@ -869,7 +880,7 @@ function paydayPlan(s, c, steps){
   const savePer = c.saveKnown ? c.actualSave*12/ppy : null;
   const P = (savePer!=null && savePer<leftPer) ? savePer + (leftPer-savePer)/2 : leftPer;
   let rem = P; const lines = [];
-  const take = (amt, label, note) => { const a = Math.max(0, Math.min(rem, amt)); if(a>=1){ lines.push({a, label, note}); rem -= a; } };
+  const take = (amt, label, note, id) => { const a = Math.max(0, Math.min(rem, amt)); if(a>=1){ lines.push({a, label, note, id}); rem -= a; } };
   const b = s.buckets||{};
   const bucketPer = BUCKETS.reduce((a,[k])=>a+n(b[k]),0)/ppy;
   const open = steps.filter(x=>["cushion","match","debt","emergency","retire"].includes(x.id) && x.status!=="done" && x.status!=="skip");
@@ -877,17 +888,18 @@ function paydayPlan(s, c, steps){
   let i = 0;
   while(i<open.length && bounded(open[i].id)){
     const id = open[i].id;
-    if(id==="cushion") take(c.cushionTarget-c.cash, "Starter cushion", `until it reaches ${money(c.cushionTarget)}`);
+    if(id==="cushion") take(c.cushionTarget-c.cash, "Starter cushion", `until it reaches ${money(c.cushionTarget)}`, "cushion");
     if(id==="match" && c.terms && c.terms!=="unsure"){
       const add = c.m.base*(c.terms.upto-c.pct)/100/ppy;
-      take(s.roth!=="roth" ? add*(1-Math.max(0,c.preSaves)) : add, `Raise your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${c.terms.upto}%`, "comes out of your paycheck; this is what it costs after tax");
+      take(s.roth!=="roth" ? add*(1-Math.max(0,c.preSaves)) : add, `Raise your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${c.terms.upto}%`, "comes out of your paycheck; this is what it costs after tax", "match");
     }
     i++;
   }
-  if(bucketPer>0) take(bucketPer, "Costs you know are coming", rem<bucketPer ? `start with this much of the ${money(bucketPer)} total` : "split across your buckets");
   const nxt = open[i];
+  const bucketCap = nxt && nxt.id==="debt" ? Math.min(bucketPer, rem/2) : bucketPer;   // don't starve a high-rate card
+  if(bucketPer>0) take(bucketCap, "Costs you know are coming", bucketCap<bucketPer-1 ? `start with this much of the ${money(bucketPer)} total` : "split across your buckets", "buckets");
   const label = !nxt ? "Next goals" : nxt.id==="debt" ? `Extra on your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} at ${n(c.expensive[0].rate)}%` : nxt.id==="emergency" ? "Three months of savings" : nxt.id==="retire" ? "More retirement saving" : "Next goals";
-  take(rem, label, nxt && nxt.id==="debt" ? "on top of the minimums; highest rate first" : "");
+  take(rem, label, nxt && nxt.id==="debt" ? "on top of the minimums; highest rate first" : "", nxt ? nxt.id : "goals");
   return {P, lines, leftPer, savePer, ppy};
 }
 
@@ -927,6 +939,7 @@ function bucketOut(){
 function render(){
   const s = S, c = compute(s), steps = buildSteps(s,c);
   const cur = steps.find(x=>x.status==="now") || steps[steps.length-1];
+  c.pp = paydayPlan(s, c, steps);
   const d = stepDetail(cur.id, s, c);
   const next = steps.slice(steps.indexOf(cur)+1).find(x=>x.status!=="done" && x.status!=="skip");
   const h = [];
@@ -950,7 +963,7 @@ function render(){
   </section>`);
 
   // payday plan
-  const pp = paydayPlan(s, c, steps);
+  const pp = c.pp;
   if(pp && pp.lines.length){
     h.push(`<section aria-labelledby="h-pay"><h2 id="h-pay">Your payday plan</h2>
       <p>Each paycheck, move about <b class="num">${money(pp.P)}</b>, in this order:</p>
@@ -1077,7 +1090,7 @@ function render(){
     ${gross>0 && ra.tax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
     <details><summary>How spending at ${ra.R} is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p></div></details>
     <p>Each 1% more of your pay saved adds about <b class="num">${money(per1)} a month</b> after tax at ${ra.R}.</p>
-    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${s.roth==="roth"?" Your Roth savings come out tax-free.":""}</p>
+    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${s.roth==="roth"?" Your Roth savings come out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
   </div></details>`);
 
   // also on your list
@@ -1117,7 +1130,10 @@ function render(){
   if(c.m.eic>0 || c.m.njEitc>0) table.push(`Earned Income Tax Credits, federal and New Jersey: about <b class="num">${money(c.m.eic+c.m.njEitc)}</b>. About 1 in 5 people who qualify never claim it.`);
   if(c.m.njCtc>0) table.push(`New Jersey Child Tax Credit for children under 6: about <b class="num">${money(c.m.njCtc)}</b>.`);
   if(c.m.sRate>0 && c.m.contrib<2000) table.push(`Saver's Credit: your income qualifies for ${Math.round(c.m.sRate*100)}% back on up to $2,000 saved for retirement, limited by the tax you owe.`);
-  if(n(s.kids6)>0) table.push(`Dependent care FSA: pay up to <b class="num">${money(RULES.fed.dcfsa)}</b> a year of childcare before tax (new 2026 limit). Sign up at open enrollment.`);
+  const kidsU13 = n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13));
+  if(kidsU13) table.push(`Child and Dependent Care Credit: if you pay for daycare or after-school care for children under 13, the federal credit covers 20% to 50% of up to <b class="num">$3,000</b> of costs for one child or <b class="num">$6,000</b> for two or more, and New Jersey adds its own credit for incomes up to $150,000. A free VITA preparer can claim it.`);
+  if((s.debts||[]).some(d=>d.type==="student" && n(d.balance)>0)) table.push(`Student loan forgiveness: most hospitals are nonprofits, so federal student loans can qualify for Public Service Loan Forgiveness. Whatever is left is forgiven after 120 qualifying payments on an income-based plan while you work full time there. Check with the PSLF Help Tool at studentaid.gov. If you're on track for it, don't pay extra on those loans; put the money toward your other steps.`);
+  if(n(s.kids6)>0) table.push(`Dependent care FSA: pay up to <b class="num">${money(RULES.fed.dcfsa)}</b> a year of childcare before federal tax (new 2026 limit). The same dollars can't count for both the FSA and the credit; a VITA preparer or HR can tell you which saves more.`);
   const hhInc = c.m.wages;
   const tiers = RULES.nj.anchor[s.housing==="own"?"own":"rent"];
   const anch = (tiers.find(([top])=>hhInc<=top)||[0,0])[1];
@@ -1156,7 +1172,7 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
 const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
@@ -1167,6 +1183,7 @@ function fillForm(){
 }
 function toggles(){
   $("fs-kids").hidden = !(n(S.kids)>0);
+  $("wrap-spousetake").hidden = S.filing!=="mfj";
   $("fs-plan").hidden = S.plan!=="yes";
   $("wrap-mortoff").hidden = S.housing!=="own";
   $("rent-label").textContent = S.housing==="own" ? "Mortgage, property tax and insurance" : "Rent";
