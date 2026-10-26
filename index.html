@@ -1144,7 +1144,8 @@ function render(){
   const kidsN = n(s.kids), oldest = n(s.kidOldest);
   const deps = c.married || kidsN>0;
   const also = [];
-  if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, a common starting point is coverage of about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give you one or two times pay for free; a 20-year level term policy covers the rest, often for $30 to $60 a month at mid-life. Skip whole life.`);
+  if(deps && n(s.age)>=50 && !(n(s.kids)>0)) also.push(`<b>Life insurance.</b> With grown children, you may need less than you think: enough to pay off the mortgage and cover what your ${c.married?"spouse":"partner"} would lose if your income stopped, until Social Security and savings take over. Check what your job provides first; a 10-year level term policy covers any gap. Skip whole life.`);
+  else if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, a common starting point is coverage of about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give you one or two times pay for free; a 20-year level term policy covers the rest, often for $30 to $60 a month at mid-life. Skip whole life.`);
   also.push(`<b>Disability insurance.</b> Your ability to work is worth more than anything you own. Check whether your job's long-term disability plan replaces about 60% of pay, and sign up at open enrollment if it's optional.`);
   if(kidsN>0 && s.kidOldest!=="" && s.kidOldest!=null){
     const yrs = Math.max(0, 18-oldest);
