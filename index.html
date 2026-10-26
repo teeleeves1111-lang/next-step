@@ -1062,9 +1062,25 @@ function render(){
   const who = c.partner ? "your household" : "you";
   const part = (mine, theirs) => c.partner && theirs>0 ? ` (you ${money(mine)}, ${c.married?"spouse":"partner"} ${money(theirs)})` : "";
   const L = rp.levers;
+  const yrsTo = a => Math.max(0, Math.round(a - n(s.age)));
+  const inYears = a => { const y = yrsTo(a); return y<=0 ? "now" : `in about ${plural(y,"year")}, around ${RULES.year + y}`; };
+  // what following the plan adds: the full match, the payday plan's retirement money, and half of costs that end
+  const ppyR = n(s.freq)||26;
+  let planAdd = 0;
+  if(s.plan==="yes" && c.terms && c.terms!=="unsure" && c.pct<c.terms.upto) planAdd += c.terms.upto - c.pct;
+  if(c.pp && c.m.base>0) planAdd += c.pp.lines.filter(l=>l.id==="retire").reduce((a,l)=>a+l.a,0)*ppyR/c.m.base*100;
+  if(n(s.endCosts)>0 && c.m.base>0) planAdd += n(s.endCosts)*12/2/c.m.base*100;
+  const capR = c.m.base>0 ? (s.plan==="yes" ? (RULES.fed.deferralLimit + (n(s.age)>=50?RULES.fed.catchUp50:0))/c.m.base*100 - c.pct : RULES.fed.iraLimit/c.m.base*100) : 0;
+  planAdd = Math.max(0, Math.min(planAdd, capR));
+  let planAge = null;
+  if(planAdd>=0.5) for(const r of rp.rows){ if(retireAt(s,c,r.R,planAdd).covered){ planAge = r.R; break; } }
+  const planBetter = planAge!=null && (rp.earliest==null || planAge<rp.earliest);
   const headline = L ? `At ${L.A}, income would cover about ${L.coverPct}% of spending` : rp.earliest!=null
     ? (rp.earliest<=Math.max(62,Math.ceil(n(s.age))) && n(s.age)>=62 ? `You could retire now` : `Earliest you could retire: about ${rp.earliest}`)
     : "";
+  const yearsLine = rp.earliest!=null && yrsTo(rp.earliest)>0 ? `At your current saving, that's ${inYears(rp.earliest)}.` : "";
+  const planLine = planBetter ? `<div class="money num">If you follow your plan${n(s.endCosts)>0?" (including half of what frees up when college ends)":""}: about ${planAge}, ${inYears(planAge)}.</div>` : "";
+  const summaryLine = L ? headline : planBetter ? (rp.earliest!=null ? `Retire about ${rp.earliest}, or ${planAge} with your plan` : `Retire about ${planAge} with your plan`) : rp.earliest!=null && yrsTo(rp.earliest)>0 ? `${headline}, ${inYears(rp.earliest)}` : headline;
   const leverHtml = L ? `
     <p>That means retiring on a tighter budget: about <b class="num">${money(L.net)} a month</b> after tax, against <b class="num">${money(L.need)}</b> of spending. Social Security will be the base. These close the rest, and they add up:</p>
     <ul class="plain">
@@ -1096,8 +1112,10 @@ function render(){
     </div>`;
   const per1 = retireAt(s,c,ra.R,1).net - ra.net;
   const chips = rp.rows.map(r=>`<button type="button" class="agechip ${r.covered?"ok":"no"} ${r.R===ra.R?"sel":""}" data-retage="${r.R}" aria-pressed="${r.R===ra.R}"><b>${r.R}</b><span>${r.covered?"✓":money(-r.short).replace("−","−")}</span></button>`).join("");
-  h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${headline}</span></summary><div class="fb">
+  h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${summaryLine}</span></summary><div class="fb">
     <div class="money">${headline}.</div>
+    ${yearsLine?`<p>${yearsLine}</p>`:""}
+    ${planLine}
     ${fixLine?`<p>${fixLine}</p>`:""}
     ${leverHtml}
     <div><p class="small muted" style="margin-bottom:6px">Tap an age. ✓ means income covers spending; otherwise it shows the monthly shortfall.</p><div class="agerow">${chips}</div></div>
@@ -1184,13 +1202,28 @@ function render(){
     </ul></div></details>`);
 
   // help
-  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help you can trust</span><span class="fs">Tax help, 211, credit counseling</span></summary><div class="fb"><div class="links">
+  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help and reading</span><span class="fs">Tax help, 211, credit counseling, good books</span></summary><div class="fb"><div class="links">
     <a href="https://www.irs.gov/individuals/free-tax-return-preparation-for-qualifying-taxpayers" target="_blank" rel="noopener">Free tax preparation (IRS VITA)<small>Volunteers file your return at no cost</small></a>
     <a href="https://www.nj211.org" target="_blank" rel="noopener">NJ 211<small>Help with rent, utilities, food and childcare. Or dial 211.</small></a>
     <a href="https://www.nfcc.org" target="_blank" rel="noopener">Nonprofit credit counseling (NFCC)<small>Lower rates and a payoff plan, no new loan</small></a>
     <a href="https://www.consumerfinance.gov" target="_blank" rel="noopener">Consumer Financial Protection Bureau<small>Free tools and a place to file complaints</small></a>
     <a href="https://www.ssa.gov/myaccount/" target="_blank" rel="noopener">Your Social Security estimate<small>Your real number, from your real earnings</small></a>
-  </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p></div></details>`);
+  </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p>
+    <h3>Worth reading</h3>
+    <p class="small muted">Free or library-friendly, and none of them sell anything. Your library card gets most books free on the Libby app.</p>
+    <ul class="plain">
+      <li><b>The Index Card</b> by Helaine Olen and Harold Pollack. Personal finance on one index card. The best short start.</li>
+      <li><b>The Psychology of Money</b> by Morgan Housel. Why money decisions are about behavior, not math. Easy chapters.</li>
+      <li><b>The Simple Path to Wealth</b> by JL Collins. Low-cost index funds explained plainly.</li>
+    </ul>
+    <div class="links">
+      <a href="https://www.investor.gov" target="_blank" rel="noopener">Investor.gov (SEC)<small>Investing basics and a compound interest calculator</small></a>
+      <a href="https://www.bogleheads.org/wiki/Getting_started" target="_blank" rel="noopener">Bogleheads: Getting started<small>Free, plain guide to saving and low-cost investing</small></a>
+      <a href="https://www.ssa.gov/benefits/retirement/" target="_blank" rel="noopener">Social Security: retirement benefits<small>When to claim and how your age changes the check</small></a>
+      <a href="https://brokercheck.finra.org" target="_blank" rel="noopener">FINRA BrokerCheck<small>Look up any "advisor" before you trust them with money</small></a>
+      <a href="https://studentaid.gov/manage-loans/forgiveness-cancellation/public-service" target="_blank" rel="noopener">Public Service Loan Forgiveness<small>For federal student loans while you work at a nonprofit hospital</small></a>
+      <a href="https://nj.gov/getcoverednj/" target="_blank" rel="noopener">Get Covered New Jersey<small>Health insurance if you retire before Medicare at 65</small></a>
+    </div></div></details>`);
   h.push(`</div>`);
 
   $("view-plan").innerHTML = h.join("");
