@@ -167,6 +167,22 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 textarea{min-height:70px;font-size:.94rem;font-family:ui-monospace,Menlo,monospace}
 footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:12px;font-size:.94rem;color:var(--muted)}
 @media (prefers-reduced-motion: no-preference){ .bar i{transition:width .4s ease} }
+/* Ask AI */
+header.top{flex-wrap:wrap}
+.tabs button{padding:8px 12px}
+.aichips{display:flex;flex-wrap:wrap;gap:8px}
+.aichip{font:inherit;font-size:.94rem;text-align:left;line-height:1.3;padding:9px 14px;border-radius:18px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.aichip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.gr{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:1rem;line-height:1.45;cursor:pointer}
+.gr input{margin-top:4px;width:18px;height:18px;accent-color:var(--accent);flex:none}
+.gr .why{display:block;color:var(--muted);font-size:.875rem}
+.gr .flag{display:block;color:var(--gap);font-size:.875rem;font-weight:700}
+.gr.off .t{color:var(--muted);text-decoration:line-through}
+.gr.hot{background:var(--gap-soft);border-radius:10px;padding:10px;border-bottom-color:transparent;margin-top:4px}
+#ai-prompt{white-space:pre-wrap;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.5;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:340px;overflow:auto;margin-top:8px}
+#ai-free{font:inherit;font-size:1rem;width:100%;padding:10px 12px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink)}
+.ailinks a{font-weight:700;margin-right:14px}
+details.aiset summary{font-weight:700;cursor:pointer}
 </style>
 </head>
 <body>
@@ -176,10 +192,13 @@ footer{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direc
     <div class="tabs" role="tablist">
       <button id="tab-plan" role="tab" aria-selected="true" type="button">My plan</button>
       <button id="tab-form" role="tab" aria-selected="false" type="button">My numbers</button>
+      <button id="tab-ai" role="tab" aria-selected="false" type="button">Ask AI</button>
     </div>
   </header>
 
   <main id="view-plan" class="wrap"></main>
+
+  <main id="view-ai" class="wrap" hidden></main>
 
   <main id="view-form" class="wrap" hidden>
     <p class="muted">Six short sections. Rough numbers are fine. Everything stays on this phone.</p>
@@ -1295,18 +1314,158 @@ $("see-plan-2").onclick = ()=>{ show("plan"); };
 $("clear").onclick = ()=>{ S = JSON.parse(JSON.stringify(BLANK)); save(); fillForm(); render(); };
 
 function show(which){
-  const plan = which==="plan";
-  $("view-plan").hidden = !plan; $("view-form").hidden = plan;
-  $("tab-plan").setAttribute("aria-selected", plan); $("tab-form").setAttribute("aria-selected", !plan);
-  if(!plan){ if(S.example){ /* keep example values visible so the form isn't empty */ } fillForm(); }
+  ["plan","form","ai"].forEach(v=>{ $("view-"+v).hidden = v!==which; $("tab-"+v).setAttribute("aria-selected", v===which); });
+  if(which==="form") fillForm();
+  if(which==="ai") renderAI();
   window.scrollTo({top:0});
 }
 $("tab-plan").onclick = ()=>show("plan");
 $("tab-form").onclick = ()=>show("form");
+$("tab-ai").onclick = ()=>show("ai");
 
 /* move plan */
 $("copy-code").onclick = ()=>{ const t=$("code-out"); try{ navigator.clipboard.writeText(t.value).then(()=>{$("code-msg").textContent="Copied.";}).catch(()=>{t.select();$("code-msg").textContent="Selected. Copy it from here.";}); }catch(e){ t.select(); $("code-msg").textContent="Selected. Copy it from here."; } };
 $("load-code").onclick = ()=>{ try{ const o = JSON.parse(decodeURIComponent(escape(atob($("code-in").value.trim())))); S = Object.assign({}, BLANK, o); save(); fillForm(); render(); $("code-msg").textContent="Plan loaded."; show("plan"); }catch(e){ $("code-msg").textContent="That code didn't work. Copy the whole code and try again."; } };
+
+/* ===== Ask AI: a prompt built from this plan, with the questions a careful adviser would ask ===== */
+const AI_ALWAYS_TOP = [
+  {k:"clarify", t:"Before you give me a plan, ask me up to five questions you need answered, and wait for my answers.", w:"Advice built on a wrong guess about your life doesn't help."},
+  {k:"real", t:"Keep every suggestion inside what I actually have left each month (the numbers below). No generic \"save 15%\" advice if my budget can't do it.", w:"Advice that doesn't fit your paycheck just makes you feel worse."},
+  {k:"assume", t:"Question anything I treat as certain — overtime continuing, a refund coming, my job, my health — and tell me what happens if it doesn't.", w:"Plans break where you didn't expect them to."}
+];
+const AI_SIT = [
+  {k:"gap", show:(s,c)=>c.left<0, t:"Help me close my monthly gap first. Don't suggest anything that needs money I don't have yet.", w:"Every other step needs a little room each month.",
+    hot:(s,c)=>`Your bills and minimums are ${money(-c.left)} a month more than take-home.`},
+  {k:"debt", show:(s,c)=>c.debts.length>0, t:"Rank my debts by interest rate. Steer me away from payday loans, title loans, cash advances and \"debt relief\" companies that charge fees up front — and toward a nonprofit credit counselor (nfcc.org) if I need help.", w:"High-rate debt grows faster than any savings can.",
+    hot:(s,c)=>c.predatory.length?`You have a ${c.predatory[0].type==="payday"?"payday or title loan":"debt at "+n(c.predatory[0].rate)+"%"}.`:(c.expensive.length?`Your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} is at ${n(c.expensive[0].rate)}%.`:"")},
+  {k:"match", show:(s,c)=>s.plan!=="no" && c.terms!==null, t:"Check that I'm getting my full employer match. It's free money, and it usually beats anything else I could do with the dollar.", w:"Leaving the match behind is turning down part of your pay.",
+    hot:(s,c)=>s.plan==="unsure"||c.terms==="unsure"?"You're not sure about your plan or match yet.":(c.terms&&c.pct<c.terms.upto?`You put in ${c.pct}%; the full match needs ${c.terms.upto}%.`:"")},
+  {k:"taxes", show:(s,c)=>!s.taxDone, t:"Check the credits I may qualify for — Earned Income Credit, child tax credits, New Jersey credits, the Saver's Credit — and point me to free filing (VITA, IRS Free File), not paid preparers or refund-advance loans.", w:"Working families often leave real money unclaimed.",
+    hot:(s,c)=>(c.m.eic||c.m.saver||c.m.actc||c.m.njEitc)?"The calculator thinks you qualify for credits.":""},
+  {k:"emerg", show:()=>true, t:"Before suggesting investing beyond the match, check that my emergency savings could cover about three months of must-pay bills.", w:"Without a cushion, one car repair goes on a credit card.",
+    hot:(s,c)=>c.cash<c.cushionTarget?`You have ${money(c.cash)} in cash.`:""},
+  {k:"retire", show:()=>true, t:"For retirement, count Social Security, any pension and my partner's savings — not just my retirement account — and tell me honestly when I can afford to stop.", w:"For most people Social Security is the biggest piece."},
+  {k:"products", show:()=>true, t:"Don't recommend products with high fees or commissions — whole life insurance, high-fee annuities, rent-to-own, credit repair — without saying what they cost and what the cheaper option is.", w:"Those products pay the seller first."},
+  {k:"free", show:()=>true, t:"Point me to free help first — 211 (nj211.org), nonprofit credit counseling, free tax help, my employer's assistance program — before anything that costs money.", w:"There's good free help most people don't know about."}
+];
+const AI_ALWAYS_END = [
+  {k:"hold", t:"If I push back, don't just agree with me. Change your advice only if I give you a new fact or a better reason, and tell me which.", w:"AI tends to give in when you sound unhappy."},
+  {k:"against", t:"End with \"The strongest case against this plan\" — the best argument against what you suggested.", w:"So you hear the other side, not just a cheerleader."},
+  {k:"plain", t:"Use plain words and short steps I can do this week. Tell me where I'd need a professional.", w:""}
+];
+const AI_Q = [
+  {k:"weak", t:"Find the weak spots in my plan."},
+  {k:"pay", t:"What should I do with my next paycheck?"},
+  {k:"gap", t:"How do I close my monthly gap?", show:(s,c)=>c.left<0},
+  {k:"debt", t:"Which debt should I pay first, and how fast can I be done?", show:(s,c)=>c.debts.length>0},
+  {k:"match", t:"How do I make sure I get my full match?", show:(s,c)=>s.plan!=="no"},
+  {k:"roth", t:"Should I choose Roth or pre-tax?", show:(s,c)=>s.plan==="yes"},
+  {k:"shifts", t:"Where should my extra-shift money go?", show:(s,c)=>c.extraNet>0},
+  {k:"ef", t:"How do I build emergency savings on a tight budget?"},
+  {k:"ret", t:"When can I realistically afford to retire?"},
+  {k:"late", t:"I'm over 50. What can I still do to catch up?", show:(s)=>n(s.age)>=50}
+];
+function aiState(){ S.ai = Object.assign({qs:["weak"], off:[], free:""}, S.ai||{}); return S.ai; }
+function aiGuards(s,c){ return AI_ALWAYS_TOP.concat(AI_SIT.filter(g=>g.show(s,c))).concat(AI_ALWAYS_END); }
+function aiQs(s,c){ return AI_Q.filter(q=>!q.show||q.show(s,c)); }
+function aiFacts(s,c){
+  const me=[], calc=[], plan = s.ptype==="401k"?"401(k)":"403(b)";
+  const fil = {single:"single", hoh:"single parent (head of household)", mfj:"married, filing jointly"}[s.filing]||s.filing;
+  me.push(`Age ${n(s.age)}; ${fil}${n(s.kids)>0?`; ${n(s.kids)} ${n(s.kids)===1?"child":"children"} under 17${n(s.kids6)>0?` (${n(s.kids6)} under 6)`:""}`:"; no children under 17"}.`);
+  if(s.filing==="mfj") me.push(`Spouse's pay before taxes: ${n(s.spouse)>0?money(n(s.spouse))+" a year":"none"}.`);
+  me.push(`I work at a hospital in New Jersey. Pay: ${s.payMode==="hourly"?`${money(n(s.hourly))}/hour × ${n(s.hours)} hours a week (about ${money(grossPay(s))} a year)`:`${money(n(s.salary))} a year salary`}, paid ${({52:"weekly",26:"every two weeks",24:"twice a month",12:"monthly"})[n(s.freq)||26]||"every two weeks"}.${n(s.extra)>0?` Extra shifts: about ${money(n(s.extra))} a month before tax (not guaranteed).`:""}`);
+  me.push(`Housing: ${s.housing==="own"?"own, mortgage":"rent"} ${money(n(s.rent))}/month. Car payment ${money(n(s.car))}/month. Other must-pay bills ${money(n(s.other))}/month.`);
+  if(c.debts.length) me.push("Debts: "+c.debts.map(d=>`${DEBT_TYPES[d.type]||"debt"} ${money(n(d.balance))} at ${n(d.rate)}%, minimum ${money(n(d.min))}/month`).join("; ")+".");
+  else me.push("Debts: none besides housing and car.");
+  me.push(`Cash in savings/checking: ${money(c.cash)}. Retirement account balance: ${money(n(s.rbal))}.`);
+  if(s.plan==="yes"){
+    const mt = c.terms==="unsure"?"not sure what the match is":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
+    me.push(`Workplace plan: ${plan}, I put in ${c.pct}% (${({pre:"pre-tax",roth:"Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
+  } else me.push(s.plan==="no"?"Workplace retirement plan: none offered.":"Workplace retirement plan: not sure whether I have one or what's in it.");
+  if(n(s.pension)>0) me.push(`Pension expected: about ${money(n(s.pension))}/month${s.penCola==="no"?", not adjusted for inflation":""}.`);
+  me.push(`Years worked so far (for Social Security): ${n(s.years)}.`);
+  if(c.partner && !c.married) me.push(`Partner (not married): age ${n(s.pAge)||"?"}, pay ${money(n(s.pPay))}/year.`);
+  if(c.partner) me.push(`Partner's retirement savings: ${money(n(s.pSavings))}, adding about ${money(n(s.pSaveYear))}/year${n(s.pPension)>0?`; pension about ${money(n(s.pPension))}/month`:""}.`);
+
+  calc.push(`Take-home pay: about ${money(c.take)}/month${c.estimated?" (estimated by the calculator, not from a real paycheck)":""}. Must-pay bills ${money(c.bills)}${c.mins>0?` and debt minimums ${money(c.mins)}`:""}/month.`);
+  calc.push(c.left<0?`Short ${money(-c.left)} a month: bills and minimums are more than take-home pay.`:`Left each month after bills and minimums: ${money(c.left)} (base pay only).`);
+  if(c.saveKnown) calc.push(`My savings actually grow about ${money(c.actualSave)} a month.`);
+  if(c.extraNet>0) calc.push(`Extra shifts add about ${money(c.extraNet)}/month after tax (not counted above).`);
+  if(c.m.refund>=300) calc.push(`Expected tax refund: about ${money(c.m.refund)}${c.m.eic?`, including about ${money(c.m.eic)} Earned Income Credit`:""}.`);
+  if(c.terms && c.terms!=="unsure") calc.push(c.pct>=c.terms.upto?`I get the full employer match (${money(c.matchNow)}/year).`:`I get ${money(c.matchNow)}/year of match; the full match is ${money(c.matchFull)}/year if I put in ${c.terms.upto}%.`);
+  const steps = buildSteps(s,c), cur = steps.find(x=>x.status==="now")||steps[steps.length-1];
+  calc.push(`The app's step-by-step plan: ${steps.filter(x=>x.status!=="skip").map(x=>`${TITLES[x.id]}${x.status==="done"?" (done)":x.status==="now"?" (CURRENT STEP)":""}`).join(" → ")}.`);
+  const d = stepDetail(cur.id,s,c); if(d&&d.h) calc.push(`Current step: ${d.h}.`);
+  const pp = paydayPlan(s,c,steps);
+  if(pp&&pp.lines.length){
+    calc.push(`Payday plan: move about ${money(pp.P)} each paycheck (${({52:"weekly",26:"every two weeks",24:"twice a month",12:"monthly"})[pp.ppy]||"each payday"}) — `+pp.lines.map(l=>`${l.label} ${money(l.a)}${l.note?` (${l.note})`:""}`).join("; ")+".");
+    if(pp.savePer!=null && pp.savePer<pp.leftPer) calc.push(`The payday plan deliberately asks for more than I save now: halfway between what my savings actually grow (${money(pp.savePer)} a paycheck) and everything left after bills (${money(pp.leftPer)}). It is a stretch target, not a rule.`);
+  }
+  calc.push(`Emergency savings goal: about ${money(c.efTarget)} (${c.efMonths} months of must-pay bills); starter cushion ${money(c.cushionTarget)}.`);
+  const rp = retirePlan(s,c), r67 = retireAt(s,c,67);
+  calc.push(`Retirement at 67, in today's dollars after tax: about ${money(r67.net)}/month from Social Security, savings${r67.pen>0?", pension":""}${c.partner?" and partner":""}, against about ${money(r67.need)}/month needed (today's spending minus costs that end, plus health insurance).`);
+  calc.push(rp.earliest!=null?`Earliest age the calculator says income covers needs: ${rp.earliest}.`:`At no age from 62 to 70 does retirement income cover today's needs on the current path.`);
+  if(rp.fix) calc.push(`Saving ${rp.fix.pct}% more of pay would cover it at ${rp.fix.age}.`);
+  calc.push("Assumptions: 4% return after inflation, 4% yearly draw from savings, current tax law.");
+  return {me, calc};
+}
+function aiRole(){
+  return "Act as my money coach: a careful, honest adviser who works only for me — not selling anything, and not a cheerleader. I work at a hospital and money is tight, so I need advice that fits my real paycheck.\n\n"+
+    "How to work:\n- The numbers below come from a calculator using my inputs. Treat them as facts; don't redo the math unless something looks wrong, and if it does, say so.\n- This is education, not legal or tax advice.";
+}
+function aiBuild(s,c,kind){
+  const A = aiState(), F = aiFacts(s,c);
+  const facts = `About me:\n- ${F.me.join("\n- ")}\n\nWhat the calculator worked out:\n- ${F.calc.join("\n- ")}`;
+  const g = aiGuards(s,c).filter(x=>!A.off.includes(x.k)).map(x=>"- "+x.t).join("\n");
+  if(kind==="numbers") return `My numbers — Next Step app, ${new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}\n\n${facts}\n`;
+  if(kind==="instr") return `${aiRole()}\n\nMy numbers are in the attached file. If it's more than a few months old or my situation changed, ask me to update it first.\n\nEvery time, make sure you:\n${g}\n`;
+  const valid = aiQs(s,c).map(q=>q.k), ql = AI_Q.filter(q=>A.qs.includes(q.k)&&valid.includes(q.k)).map(q=>q.t);
+  if(A.free.trim()) ql.push(A.free.trim());
+  if(!ql.length) ql.push(AI_Q[0].t);
+  return `${aiRole()}\n\n${facts}\n\nMake sure you:\n${g}\n\nMy question${ql.length>1?"s":""}:\n- ${ql.join("\n- ")}\n`;
+}
+function renderAI(){
+  const s=S, c=compute(s), A=aiState(), gs=aiGuards(s,c);
+  const row = g => { const on=!A.off.includes(g.k), f=g.hot?g.hot(s,c):"";
+    return `<label class="gr${on?"":" off"}${f&&on?" hot":""}"><input type="checkbox" data-aig="${g.k}"${on?" checked":""}><span><span class="t">${esc(g.t)}</span>${g.w?`<span class="why">${esc(g.w)}</span>`:""}${f?`<span class="flag">⚠ ${esc(f)}</span>`:""}</span></label>`; };
+  const qs = aiQs(s,c);
+  $("view-ai").innerHTML = `
+  ${s.example?`<div class="banner"><span><b>These are example numbers.</b> Put in your own first, so the AI gets your real situation.</span><button class="btn small primary" type="button" data-go="form">Use my numbers</button></div>`:""}
+  <section><h2>Ask AI about your plan</h2>
+    <p>AI chatbots tend to agree with whatever you ask. This builds a message with your numbers from this app, plus the questions a careful money coach would ask, so the AI checks your plan instead of just saying yes.</p></section>
+  <section><div class="eyebrow">1 · What the AI has to cover</div>
+    <p class="small muted">Picked for your situation. Uncheck any you disagree with.</p>
+    <div>${gs.map(row).join("")}</div></section>
+  <section><div class="eyebrow">2 · What do you want to ask?</div>
+    <div class="aichips" style="margin-top:8px">${qs.map(q=>`<button type="button" class="aichip" data-aiq="${q.k}" aria-pressed="${A.qs.includes(q.k)}">${esc(q.t)}</button>`).join("")}</div>
+    <input id="ai-free" type="text" placeholder="Or type your own question" value="${esc(A.free)}" style="margin-top:10px"></section>
+  <section><div class="eyebrow">3 · Paste it into any AI</div>
+    <div class="btnrow" style="margin-top:8px"><button type="button" class="btn primary" id="ai-copy" style="flex:1">Copy for AI</button></div>
+    <p class="small muted" style="margin-top:8px"><b>Private:</b> the message has your numbers but no name, employer or account numbers. Keep it that way if you add details.</p>
+    <p class="small ailinks" style="margin-top:6px">Then open <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a><a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a><a href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>and paste.</p>
+    <details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:700">See the message</summary><div id="ai-prompt"></div></details>
+    <div class="callout" style="margin-top:12px;background:var(--accent-soft)"><p class="small"><b>When it answers:</b> if you push back and it suddenly agrees, ask what new fact changed its mind. Instead of "are you sure?", ask "what's the strongest case against this?"</p></div></section>
+  <details class="aiset"><summary>An adviser that remembers (optional)</summary>
+    <p class="small" style="margin-top:8px">In Claude or ChatGPT, make a <b>Project</b> (in Gemini, a <b>Gem</b>). Paste the instructions into it and add your numbers as a file. Then every chat starts from your plan. Some of these need a paid plan.</p>
+    <div class="btnrow" style="margin-top:8px"><button type="button" class="btn small" id="ai-instr">Copy instructions</button><button type="button" class="btn small" id="ai-dl">Download my numbers</button></div></details>`;
+  $("ai-prompt").textContent = aiBuild(s,c,"full");
+}
+function aiCopyText(txt, btn, ok){
+  const done=()=>{const t=btn.textContent;btn.textContent=ok;setTimeout(()=>{btn.textContent=t;},2200);};
+  const fb=()=>{const ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.top="-1000px";document.body.appendChild(ta);ta.select();let good=false;try{good=document.execCommand("copy");}catch(e){}ta.remove();
+    if(good)done();else{const d=document.querySelector("#view-ai details");if(d)d.open=true;btn.textContent="Copy blocked — select the message below";}};
+  try{navigator.clipboard.writeText(txt).then(done,fb);}catch(e){fb();}
+}
+$("view-ai").addEventListener("change", e=>{ const k=e.target.dataset.aig; if(!k) return; const A=aiState(); A.off=A.off.filter(x=>x!==k); if(!e.target.checked) A.off.push(k); save(); renderAI(); });
+$("view-ai").addEventListener("input", e=>{ if(e.target.id!=="ai-free") return; aiState().free=e.target.value; save(); $("ai-prompt").textContent=aiBuild(S,compute(S),"full"); });
+$("view-ai").addEventListener("click", e=>{
+  const q=e.target.closest("[data-aiq]"); if(q){ const A=aiState(),k=q.dataset.aiq; A.qs=A.qs.includes(k)?A.qs.filter(x=>x!==k):A.qs.concat(k); save(); renderAI(); return; }
+  if(e.target.closest("[data-go=form]")){ show("form"); return; }
+  const b=e.target.closest("button"); if(!b) return;
+  if(b.id==="ai-copy") aiCopyText(aiBuild(S,compute(S),"full"), b, "Copied — now paste it into an AI");
+  if(b.id==="ai-instr") aiCopyText(aiBuild(S,compute(S),"instr"), b, "Instructions copied");
+  if(b.id==="ai-dl"){ const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([aiBuild(S,compute(S),"numbers")],{type:"text/plain"})); a.download="next-step-my-numbers.txt"; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500); }
+});
 
 render();
 </script>
