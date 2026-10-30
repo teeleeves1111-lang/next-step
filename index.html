@@ -349,6 +349,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
                 <label class="f">Rises with inflation?<small>New Jersey teacher and state pensions currently don't.</small><select id="pPenCola"><option value="yes">Yes</option><option value="no">No, it stays flat</option></select></label>
                 <label class="f">Their Social Security at 67<small>Blank: we estimate</small><input id="pSS" type="number" inputmode="decimal" min="0"></label>
               </div>
+              <label class="f" id="wrap-pspend">Their spending in retirement, per month<small>In today's dollars. Blank: we assume the same as yours.</small><input id="pSpend" type="number" inputmode="decimal" min="0"></label>
             </div>
           </fieldset>
 
@@ -356,6 +357,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
             <legend>Spending in retirement</legend>
             <p class="muted small">We start from what you spend today, then take out payments gone by 67.</p>
             <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
+            <label class="f" id="wrap-owncarry">Of your housing payment, property tax and home insurance<small>These keep going after the mortgage is paid off. Blank: we use a third of the payment.</small><input id="ownCarry" type="number" inputmode="decimal" min="0"></label>
             <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
             <label class="f">Costs that will end before you retire, per month<small>College, child care, help for grown kids. They're in what you spend now but won't be then.</small><input id="endCosts" type="number" inputmode="decimal" min="0"></label>
             <label class="f">Or your own monthly number, in today's dollars<input id="spend" type="number" inputmode="decimal" min="0"></label>
@@ -543,6 +545,7 @@ function payoffMonths(debts, extra){
   }
   return null;
 }
+function catchUp(a){ return a>=60&&a<=63 ? RULES.fed.catchUp60 : a>=50 ? RULES.fed.catchUp50 : 0; }
 function monthsTo(target, have, perMonth){ if(have>=target) return 0; if(perMonth<=0) return null; return Math.ceil((target-have)/perMonth); }
 function plural(k, w){ return k + " " + w + (k===1?"":"s"); }
 function duration(m){ if(m==null) return null; if(m<=1) return "about a month"; if(m<24) return "about "+plural(m,"month"); return "about "+plural(Math.round(m/12),"year"); }
@@ -575,8 +578,9 @@ function retireAt(s, c, R, addPct=0){
   const gross = ssOwn + sav + pen + ssP + psav + ppen;
   const ownTaxable = s.roth==="roth" ? 0 : sav;
   let tax;
-  if(c.married) tax = retireTax(12*(ssOwn+ssP), 12*(ownTaxable+pen+psav+ppen), "mfj", 2)/12;
-  else { tax = retireTax(12*ssOwn, 12*(ownTaxable+pen), "single", 1)/12; if(c.partner) tax += retireTax(12*ssP, 12*(psav+ppen), "single", 1)/12; }
+  const o65 = (R>=65?1:0) + (c.partner && pa>=65 ? 1 : 0);
+  if(c.married) tax = retireTax(12*(ssOwn+ssP), 12*(ownTaxable+pen+psav+ppen), "mfj", 2, o65)/12;
+  else { tax = retireTax(12*ssOwn, 12*(ownTaxable+pen), "single", 1, R>=65?1:0)/12; if(c.partner) tax += retireTax(12*ssP, 12*(psav+ppen), "single", 1, pa>=65?1:0)/12; }
   const ages = c.partner ? [R, pa] : [R];
   const health = ages.reduce((a,x)=>a + (x<65 ? RULES.health.pre65 : RULES.health.medicare), 0);
   const pre65 = ages.some(x=>x<65);
@@ -593,7 +597,7 @@ function retirePlan(s, c){
   let fix = null;
   if(!first || first.R>67){
     const cap = c.m.base>0 ? (s.plan==="yes"
-      ? (RULES.fed.deferralLimit + (age>=50 ? RULES.fed.catchUp50 : 0))/c.m.base*100 - c.pct
+      ? (RULES.fed.deferralLimit + catchUp(age))/c.m.base*100 - c.pct
       : (RULES.fed.iraLimit + (age>=50 ? 1100 : 0))/c.m.base*100) : 0;   // legal limits, 2026
     for(let k=1;k<=Math.min(20,Math.floor(cap));k++){ if(retireAt(s,c,67,k).covered){ fix = {pct:k, age:67}; break; } }
   }
@@ -612,14 +616,14 @@ function retirePlan(s, c){
 }
 
 /* yearly tax in retirement (today's dollars, current law). ss = Social Security, other = pensions + pre-tax withdrawals */
-function retireTax(ss, other, status, people){
+function retireTax(ss, other, status, people, over65){
   const F = RULES.fed, J = RULES.nj;
   const [b1,b2] = F.ssTaxBase[status];
   const prov = other + .5*ss;
   let tss = 0;
   if(prov>b2) tss = Math.min(.85*ss, .85*(prov-b2) + Math.min(.5*ss, .5*(b2-b1)));
   else if(prov>b1) tss = Math.min(.5*ss, .5*(prov-b1));
-  const std = F.std[status] + people*F.std65[status];
+  const std = F.std[status] + (over65==null ? people : over65)*F.std65[status];
   const fed = bracketTax(Math.max(0, other + tss - std), F.brackets[status]);
   // New Jersey: Social Security is not taxed; retirement income exclusion phases out from $100k to $150k
   const full = J.retExclusion[status];
@@ -727,12 +731,17 @@ function compute(s){
   const saveKnown = s.actualSave!=="" && s.actualSave!=null;
   const actualSave = saveKnown ? n(s.actualSave) : null;
   const spendNow = take - (saveKnown ? actualSave : 0);
-  const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) : 0;
+  const ownCarryKnown = n(s.ownCarry)>0;
+  const ownCarry = s.housing==="own" ? (ownCarryKnown ? Math.min(n(s.rent), n(s.ownCarry)) : n(s.rent)/3) : 0;   // property tax + insurance stay
+  const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) - ownCarry : 0;
   const dropCar = s.carOff!==false ? n(s.car) : 0;
   const dropEnd = n(s.endCosts);
   const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins - dropEnd);
   const spendEntered = n(s.spend)>0;
-  const need = spendEntered ? n(s.spend) : needAuto;
+  const myNeed = spendEntered ? n(s.spend) : needAuto;
+  const pSpendKnown = n(s.pSpend)>0;
+  const pNeed = partner && !married ? (pSpendKnown ? n(s.pSpend) : myNeed) : 0;   // married: one household budget already
+  const need = myNeed + pNeed;
   const netShare = retIncome>0 ? retNet/retIncome : 1;
   const perPct = savPlus1 - savMonthly;
   const perPctNet = perPct*netShare;
@@ -742,7 +751,7 @@ function compute(s){
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,efMonths,late,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
-          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA};
+          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA,ownCarry,ownCarryKnown,myNeed,pNeed,pSpendKnown};
 }
 
 /* ===== steps ===== */
@@ -878,8 +887,9 @@ function stepDetail(id, s, c){
       how:[
         "File for free with IRS VITA volunteers (irs.gov/vita) instead of a paid preparer. Paid preparers often charge $200 or more and push refund-advance loans.",
         "If you get a big refund every year beyond these credits, ask HR for a new W-4 so more comes in each paycheck.",
+        s.payMode==="hourly" ? "Paid time and a half for overtime? Through 2028 the extra half is deductible from federal income tax, up to $12,500 a year ($25,000 married). Check that it's claimed on your return." : null,
         "Starting with 2027 tax returns, the Saver's Credit becomes the Saver's Match, a deposit straight into your retirement account. Saving now sets you up for it."
-      ], doneBtn:true };
+      ].filter(Boolean), doneBtn:true };
   }
   case "emergency": {
     const t = c.efTarget, mo = monthsTo(t,c.cash,withExtra);
@@ -1089,7 +1099,7 @@ function render(){
   if(s.plan==="yes" && c.terms && c.terms!=="unsure" && c.pct<c.terms.upto) planAdd += c.terms.upto - c.pct;
   if(c.pp && c.m.base>0) planAdd += c.pp.lines.filter(l=>l.id==="retire").reduce((a,l)=>a+l.a,0)*ppyR/c.m.base*100;
   if(n(s.endCosts)>0 && c.m.base>0) planAdd += n(s.endCosts)*12/2/c.m.base*100;
-  const capR = c.m.base>0 ? (s.plan==="yes" ? (RULES.fed.deferralLimit + (n(s.age)>=50?RULES.fed.catchUp50:0))/c.m.base*100 - c.pct : RULES.fed.iraLimit/c.m.base*100) : 0;
+  const capR = c.m.base>0 ? (s.plan==="yes" ? (RULES.fed.deferralLimit + catchUp(n(s.age)))/c.m.base*100 - c.pct : RULES.fed.iraLimit/c.m.base*100) : 0;
   planAdd = Math.max(0, Math.min(planAdd, capR));
   let planAge = null;
   if(planAdd>=0.5) for(const r of rp.rows){ if(retireAt(s,c,r.R,planAdd).covered){ planAge = r.R; break; } }
@@ -1120,12 +1130,13 @@ function render(){
   let verdict;
   if(ra.covered) verdict = `<p>At ${ra.R}, that covers the <b class="num">${money(ra.need)} a month</b> ${who} would spend${total>ra.need+1?`, with about ${money(total-ra.need)} to spare`:""}.</p>`;
   else verdict = `<p>At ${ra.R}, ${who} would spend about <b class="num">${money(ra.need)} a month</b>, so ${who} would be about <b class="num">${money(ra.short)} a month short</b>.</p>`;
-  const spendRows = (c.spendEntered ? `<div class="rows small"><div class="row"><span>The number you entered</span><span>${money(c.need)}</span></div>` : `<div class="rows small">
+  const spendRows = (c.spendEntered ? `<div class="rows small"><div class="row"><span>The number you entered</span><span>${money(c.myNeed)}</span></div>` : `<div class="rows small">
       <div class="row"><span>What you spend today${c.saveKnown?"":" (assumes nothing is saved)"}</span><span>${money(c.spendNow)}</span></div>
-      ${c.dropMort>0?`<div class="row"><span>Mortgage paid off</span><span>−${money(c.dropMort)}</span></div>`:""}
+      ${c.dropMort>0?`<div class="row"><span>Mortgage paid off (property tax and insurance of ${money(c.ownCarry)}${c.ownCarryKnown?"":", estimated,"} stay)</span><span>−${money(c.dropMort)}</span></div>`:""}
       ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
       ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
       ${c.dropEnd>0?`<div class="row"><span>College and other costs ended</span><span>−${money(c.dropEnd)}</span></div>`:""}`) + `
+      ${c.pNeed>0?`<div class="row"><span>Your partner's spending${c.pSpendKnown?"":" (assumed the same as yours)"}</span><span>+${money(c.pNeed)}</span></div>`:""}
       <div class="row"><span>${ra.pre65?"Health insurance until 65":"Medicare premiums"}</span><span>+${money(ra.health)}</span></div>
       <div class="row total"><span>Spending at ${ra.R}</span><span>${money(ra.need)}</span></div>
     </div>`;
@@ -1255,7 +1266,7 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
 const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
@@ -1269,6 +1280,7 @@ function toggles(){
   $("wrap-spousetake").hidden = S.filing!=="mfj";
   $("fs-plan").hidden = S.plan!=="yes";
   $("wrap-mortoff").hidden = S.housing!=="own";
+  $("wrap-owncarry").hidden = S.housing!=="own" || S.mortgageOff===false;
   $("rent-label").textContent = S.housing==="own" ? "Mortgage, property tax and insurance" : "Rent";
   $("wrap-spouse").hidden = S.filing!=="mfj";
   $("wrap-hourly").hidden = S.payMode!=="hourly";
@@ -1279,7 +1291,8 @@ function toggles(){
   $("wrap-haspartner").hidden = married;
   $("wrap-partner").hidden = !(married || S.hasPartner==="yes");
   $("wrap-ppay").hidden = married;
-  $("partner-note").textContent = married ? "Their pay is already in the first section. Here we add their savings and pensions for your retirement picture." : "Used only for the retirement picture. Your monthly budget and taxes stay yours alone.";
+  $("wrap-pspend").hidden = married || S.hasPartner!=="yes";
+  $("partner-note").textContent = married ? "Their pay is already in the first section. Here we add their savings and pensions for your retirement picture." : "Used only for the retirement picture: their income and their spending. Your monthly budget and taxes stay yours alone.";
 }
 function renderDebts(){
   const box = $("debts");
@@ -1349,7 +1362,7 @@ const AI_SIT = [
   {k:"free", show:()=>true, t:"Point me to free help first — 211 (nj211.org), nonprofit credit counseling, free tax help, my employer's assistance program — before anything that costs money.", w:"There's good free help most people don't know about."}
 ];
 const AI_ALWAYS_END = [
-  {k:"hold", t:"If I push back, don't just agree with me. Change your advice only if I give you a new fact or a better reason, and tell me which.", w:"AI tends to give in when you sound unhappy."},
+  {k:"hold", t:"If I push back, don't give in, and don't swing the other way either. Change your advice only if I give you a new fact or a better reason, and tell me which. Me being upset, sarcastic or repeating myself isn't a new fact, and neither is me quoting back something you said.", w:"AI tends to give in when you sound unhappy, then swing too far the other way when you call it out."},
   {k:"against", t:"End with \"The strongest case against this plan\" — the best argument against what you suggested.", w:"So you hear the other side, not just a cheerleader."},
   {k:"plain", t:"Use plain words and short steps I can do this week. Tell me where I'd need a professional.", w:""}
 ];
@@ -1403,7 +1416,7 @@ function aiFacts(s,c){
   }
   calc.push(`Emergency savings goal: about ${money(c.efTarget)} (${c.efMonths} months of must-pay bills); starter cushion ${money(c.cushionTarget)}.`);
   const rp = retirePlan(s,c), r67 = retireAt(s,c,67);
-  calc.push(`Retirement at 67, in today's dollars after tax: about ${money(r67.net)}/month from Social Security, savings${r67.pen>0?", pension":""}${c.partner?" and partner":""}, against about ${money(r67.need)}/month needed (today's spending minus costs that end, plus health insurance).`);
+  calc.push(`Retirement at 67, in today's dollars after tax: about ${money(r67.net)}/month from Social Security, savings${r67.pen>0?", pension":""}${c.partner?" and partner":""}, against about ${money(r67.need)}/month needed (today's spending minus costs that end${c.dropMort>0?"; property tax and home insurance continue after the mortgage":""}${c.pNeed>0?"; includes my partner's spending":""}, plus health insurance).`);
   calc.push(rp.earliest!=null?`Earliest age the calculator says income covers needs: ${rp.earliest}.`:`At no age from 62 to 70 does retirement income cover today's needs on the current path.`);
   if(rp.fix) calc.push(`Saving ${rp.fix.pct}% more of pay would cover it at ${rp.fix.age}.`);
   calc.push("Assumptions: 4% return after inflation, 4% yearly draw from savings, current tax law.");
@@ -1411,7 +1424,7 @@ function aiFacts(s,c){
 }
 function aiRole(){
   return "Act as my money coach: a careful, honest adviser who works only for me — not selling anything, and not a cheerleader. I work at a hospital and money is tight, so I need advice that fits my real paycheck.\n\n"+
-    "How to work:\n- The numbers below come from a calculator using my inputs. Treat them as facts; don't redo the math unless something looks wrong, and if it does, say so.\n- This is education, not legal or tax advice.";
+    "How to work:\n- The numbers below come from a calculator using my inputs. Treat them as facts; don't redo the math unless something looks wrong, and if it does, say so.\n- This is education, not legal or tax advice.\n- My decision and your advice are separate. If I decide against your advice, accept that it's my choice, but don't call it a good idea unless your numbers say so. Say once what it will cost me, then help me do it as safely as I can.\n- If I say you contradicted yourself, repeat what you said before, accurately. Don't apologize your way into new advice.";
 }
 function aiBuild(s,c,kind){
   const A = aiState(), F = aiFacts(s,c);
