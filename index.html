@@ -1151,6 +1151,9 @@ function render(){
     <div><p class="small muted" style="margin-bottom:6px">Tap an age. ✓ means income covers spending; otherwise it shows the monthly shortfall.</p><div class="agerow">${chips}</div></div>
     <p>If ${who==="you"?"you stop":"you both stop"} working at ${ra.R}, in today's dollars, ${who} would have about:</p>
     <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
+    ${verdict}
+    <p>Each 1% more of your pay saved adds about <b class="num">${money(per1)} a month</b> after tax at ${ra.R}.</p>
+    <details><summary>How this is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
     <div style="position:relative;padding-top:18px">
       <div class="stack" aria-hidden="true">
         <i class="ss" style="width:${w(ssAll*k)}%"></i><i class="pn" style="width:${w(penAll*k)}%"></i><i class="sv" style="width:${w(savAll*k)}%"></i><i class="tx" style="width:${w(ra.tax)}%"></i>
@@ -1163,11 +1166,10 @@ function render(){
       <span class="l2">From savings ${money(savAll)}${part(ra.sav,ra.psav)}</span>
       ${ra.tax>=1?`<span class="l4">Taxes −${money(ra.tax)}</span>`:""}
     </div>
-    ${verdict}
     ${gross>0 && ra.tax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
-    <details><summary>How spending at ${ra.R} is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p></div></details>
-    <p>Each 1% more of your pay saved adds about <b class="num">${money(per1)} a month</b> after tax at ${ra.R}.</p>
+    <p class="small" style="font-weight:700;margin-top:4px">Spending at ${ra.R}</p>${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p>
     <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${s.roth==="roth"?" Your Roth savings come out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
+    </div></details>
   </div></details>`);
 
   // also on your list
@@ -1194,10 +1196,8 @@ function render(){
     <ul class="plain">
       <li><b>Treat all your retirement accounts as one pot.</b> Your work plan, any IRA, and a spouse's accounts add up to one mix of stocks and bonds. Decide the mix for the whole pot, not account by account.</li>
       <li><b>The simple choice:</b> one target-date <i>index</i> fund in each account, with the year closest to when you'll retire, around <span class="num">${tdYear}</span> for you. It holds stocks and bonds and gets safer as you get older.</li>
-      <li><b>Check the cost.</b> Look for the "expense ratio." Under about 0.25% a year is good; broad index funds often cost 0.02% to 0.15%. On <span class="num">$100,000</span>, a 0.75% fund costs about <span class="num">$700</span> a year more than a 0.05% one, every year.</li>
-      <li><b>If your work plan's target-date funds are expensive,</b> use its cheapest broad stock index fund there, such as an S&amp;P 500 or total stock market fund. Then use an IRA to balance the pot: a target-date index fund, or a bond index fund if you want less stock overall.</li>
-      <li><b>Know your overall stock share.</b> Ten years from retirement, target-date funds hold roughly 50% to 60% in stocks. An all-S&amp;P 500 account is 100% stocks, so if it's your biggest account, your pot is mostly stocks.${hasPension?" A pension works a lot like a bond, so with one coming you can reasonably hold more stock.":""}</li>
-      <li><b>Read fund names closely.</b> At Fidelity, "Freedom Index" funds cost about 0.12% a year; plain "Freedom" funds cost about 0.65% or more. Vanguard Target Retirement and Schwab Target Index funds are also low-cost.</li>
+      <li><b>Check the cost.</b> Look for the "expense ratio." Under about 0.25% a year is good; broad index funds often cost 0.02% to 0.15%. On <span class="num">$100,000</span>, a 0.75% fund costs about <span class="num">$700</span> a year more than a 0.05% one. Read names closely: Fidelity "Freedom Index" funds cost about 0.12%, plain "Freedom" funds about 0.65% or more.</li>
+      <li><b>If your work plan's target-date funds are expensive,</b> use its cheapest broad stock index fund there, such as an S&amp;P 500 fund, and balance the pot with a bond or target-date index fund in an IRA. Ten years from retirement, target-date funds hold roughly 50% to 60% stocks; an all-S&amp;P 500 account is 100%.${hasPension?" A pension works a lot like a bond, so with one coming you can reasonably hold more stock.":""}</li>
       <li><b>Be careful with annuity options</b> and "guaranteed" accounts inside a 403(b). Fees are often high and money can be hard to move. Don't switch because a salesperson suggests it.</li>
       <li><b>Look once a year,</b> rebalance if your mix has drifted, and don't change course because of the news.</li>
     </ul></div></details>`);
@@ -1222,24 +1222,25 @@ function render(){
   h.push(`<details class="fold" data-fold="more"><summary><span class="ft" id="h-more">More to check</span><span class="fs">${also.length+table.length} things for your situation</span></summary><div class="fb"><h3>Money you may be leaving on the table</h3><ul class="plain">${table.map(x=>`<li>${x}</li>`).join("")}</ul><h3>Protect your household</h3><ul class="plain">${also.map(x=>`<li>${x}</li>`).join("")}</ul></div></details>`);
   h.push(invHtml);
 
-  // traps
-  h.push(`<details class="fold" data-fold="traps"><summary><span class="ft" id="h-traps">Watch out for</span><span class="fs">Six common money traps</span></summary><div class="fb"><ul class="how">
+  // help, and traps to avoid
+  const trapsHtml = `<h3>Traps to avoid</h3><ul class="how">
       <li><b>Payday and title loans.</b> Fees work out to hundreds of percent a year. Payday loans are illegal in New Jersey.</li>
       <li><b>Borrowing from or cashing out your 403(b) or 401(k).</b> Cashing out costs taxes plus a 10% penalty, and a loan comes due fast if you leave your job.</li>
       <li><b>Rent-to-own stores.</b> You often pay two or three times the price.</li>
       <li><b>Refund-advance loans and paid preparers.</b> Free filing gets you the same refund.</li>
       <li><b>Debt-settlement companies</b> that charge fees before settling anything. Use a nonprofit counselor instead.</li>
       <li><b>"Advisors" selling annuities or whole life insurance</b> to people with small savings. The commissions are high and the money is hard to get out.</li>
-    </ul></div></details>`);
+    </ul>`;
 
   // help
-  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help and reading</span><span class="fs">Tax help, 211, credit counseling, good books</span></summary><div class="fb"><div class="links">
+  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help, and traps to avoid</span><span class="fs">Tax help, 211, credit counseling, good books</span></summary><div class="fb"><div class="links">
     <a href="https://www.irs.gov/individuals/free-tax-return-preparation-for-qualifying-taxpayers" target="_blank" rel="noopener">Free tax preparation (IRS VITA)<small>Volunteers file your return at no cost</small></a>
     <a href="https://www.nj211.org" target="_blank" rel="noopener">NJ 211<small>Help with rent, utilities, food and childcare. Or dial 211.</small></a>
     <a href="https://www.nfcc.org" target="_blank" rel="noopener">Nonprofit credit counseling (NFCC)<small>Lower rates and a payoff plan, no new loan</small></a>
     <a href="https://www.consumerfinance.gov" target="_blank" rel="noopener">Consumer Financial Protection Bureau<small>Free tools and a place to file complaints</small></a>
     <a href="https://www.ssa.gov/myaccount/" target="_blank" rel="noopener">Your Social Security estimate<small>Your real number, from your real earnings</small></a>
   </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p>
+    ${trapsHtml}
     <h3>Worth reading</h3>
     <p class="small muted">Free or library-friendly, and none of them sell anything. Your library card gets most books free on the Libby app.</p>
     <ul class="plain">
@@ -1441,14 +1442,15 @@ function renderAI(){
   const s=S, c=compute(s), A=aiState(), gs=aiGuards(s,c);
   const row = g => { const on=!A.off.includes(g.k), f=g.hot?g.hot(s,c):"";
     return `<label class="gr${on?"":" off"}${f&&on?" hot":""}"><input type="checkbox" data-aig="${g.k}"${on?" checked":""}><span><span class="t">${esc(g.t)}</span>${g.w?`<span class="why">${esc(g.w)}</span>`:""}${f?`<span class="flag">⚠ ${esc(f)}</span>`:""}</span></label>`; };
-  const qs = aiQs(s,c);
+  const qs = aiQs(s,c), nHot = gs.filter(g=>!A.off.includes(g.k) && g.hot && g.hot(s,c)).length;
   $("view-ai").innerHTML = `
   ${s.example?`<div class="banner"><span><b>These are example numbers.</b> Put in your own first, so the AI gets your real situation.</span><button class="btn small primary" type="button" data-go="form">Use my numbers</button></div>`:""}
   <section><h2>Ask AI about your plan</h2>
-    <p>AI chatbots tend to agree with whatever you ask. This builds a message with your numbers from this app, plus the questions a careful money coach would ask, so the AI checks your plan instead of just saying yes.</p></section>
+    <p>AI tends to agree with you. This message gives it your numbers and a careful money coach's checklist, so it checks your plan instead.</p></section>
   <section><div class="eyebrow">1 · What the AI has to cover</div>
-    <p class="small muted">Picked for your situation. Uncheck any you disagree with.</p>
-    <div>${gs.map(row).join("")}</div></section>
+    <details class="aiset" id="ai-checks"${AI_OPEN?" open":""}><summary>${gs.length-A.off.filter(k=>gs.some(g=>g.k===k)).length} checks, picked for you${nHot?` · ${nHot} flagged`:""}</summary>
+    <p class="small muted" style="margin-top:6px">Uncheck any you disagree with.</p>
+    <div>${gs.map(row).join("")}</div></details></section>
   <section><div class="eyebrow">2 · What do you want to ask?</div>
     <div class="aichips" style="margin-top:8px">${qs.map(q=>`<button type="button" class="aichip" data-aiq="${q.k}" aria-pressed="${A.qs.includes(q.k)}">${esc(q.t)}</button>`).join("")}</div>
     <input id="ai-free" type="text" placeholder="Or type your own question" value="${esc(A.free)}" style="margin-top:10px"></section>
@@ -1457,12 +1459,14 @@ function renderAI(){
     <p class="small muted" style="margin-top:8px"><b>Private:</b> the message has your numbers but no name, employer or account numbers. Keep it that way if you add details.</p>
     <p class="small ailinks" style="margin-top:6px">Then open <a href="https://claude.ai/new" target="_blank" rel="noopener">Claude</a><a href="https://chatgpt.com/" target="_blank" rel="noopener">ChatGPT</a><a href="https://gemini.google.com/app" target="_blank" rel="noopener">Gemini</a>and paste.</p>
     <details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:700">See the message</summary><div id="ai-prompt"></div></details>
-    <div class="callout" style="margin-top:12px;background:var(--accent-soft)"><p class="small"><b>When it answers:</b> if you push back and it suddenly agrees, ask what new fact changed its mind. Instead of "are you sure?", ask "what's the strongest case against this?"</p></div></section>
+    <div class="callout" style="margin-top:12px;background:var(--accent-soft)"><p class="small"><b>When it answers:</b> if its advice changes after you push back, ask what new fact changed it.</p></div></section>
   <details class="aiset"><summary>An adviser that remembers (optional)</summary>
     <p class="small" style="margin-top:8px">In Claude or ChatGPT, make a <b>Project</b> (in Gemini, a <b>Gem</b>). Paste the instructions into it and add your numbers as a file. Then every chat starts from your plan. Some of these need a paid plan.</p>
     <div class="btnrow" style="margin-top:8px"><button type="button" class="btn small" id="ai-instr">Copy instructions</button><button type="button" class="btn small" id="ai-dl">Download my numbers</button></div></details>`;
   $("ai-prompt").textContent = aiBuild(s,c,"full");
+  const ck = $("ai-checks"); if(ck) ck.addEventListener("toggle", ()=>{ AI_OPEN = ck.open; });
 }
+let AI_OPEN = false;
 function aiCopyText(txt, btn, ok){
   const done=()=>{const t=btn.textContent;btn.textContent=ok;setTimeout(()=>{btn.textContent=t;},2200);};
   const fb=()=>{const ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.top="-1000px";document.body.appendChild(ta);ta.select();let good=false;try{good=document.execCommand("copy");}catch(e){}ta.remove();
