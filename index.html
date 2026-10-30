@@ -241,10 +241,18 @@ details.aiset summary{font-weight:700;cursor:pointer}
           <label><input type="radio" name="plan" value="unsure" id="plan-unsure"><span>Not sure</span></label>
         </div>
         <div id="wrap-plan" style="display:flex;flex-direction:column;gap:14px">
-          <label class="f">You put in (% of pay)<input id="pct" type="number" inputmode="decimal" min="0" max="75" step="0.5"></label>
+          <div class="f">
+            <label for="pamt">You put in<small>Most people only know the dollar amount. It's on your pay stub, next to 403(b) or 401(k).</small></label>
+            <div class="pair">
+              <label class="f" id="wrap-pamt" aria-label="Dollars per paycheck"><input id="pamt" type="number" inputmode="decimal" min="0" placeholder="$ per paycheck"></label>
+              <label class="f" id="wrap-pct" aria-label="Percent of pay"><input id="pct" type="number" inputmode="decimal" min="0" max="75" step="0.5" placeholder="% of pay"></label>
+              <label class="f" aria-label="Units"><select id="pctUnit"><option value="dollar">$ per paycheck</option><option value="pct">% of pay</option></select></label>
+            </div>
+            <small id="pct-note" class="muted"></small>
+          </div>
           <label class="f">Employer match
             <select id="match">
-              <option value="unsure">Not sure</option><option value="none">No match</option>
+              <option value="unsure">Not sure (we'll assume a typical 3%)</option><option value="none">No match</option>
               <option value="50-6">50% of the first 6% you put in</option>
               <option value="100-3">100% of the first 3%</option>
               <option value="100-4">100% of the first 4%</option>
@@ -437,7 +445,7 @@ const EXAMPLE = {
   example:true, age:46, filing:"mfj", kids:2, kids6:0, kidOldest:15, spouse:48000, prem:165, housing:"own", actualSave:400, mortgageOff:true, carOff:true,
   buckets:{repairs:1500, gifts:1200, vacation:3000, car:0, yearly:0},
   payMode:"hourly", hourly:54, hours:36, salary:0, freq:26, takehome:"", extra:600,
-  plan:"yes", ptype:"403b", pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
+  plan:"yes", ptype:"403b", pctUnit:"dollar", pamt:155, pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
   rent:2750, car:540, other:2650,
   debts:[{type:"card",balance:7400,rate:23,min:220},{type:"personal",balance:5200,rate:12,min:175}],
   cash:2800, rbal:92000, years:23, pension:0, taxDone:false,
@@ -447,13 +455,13 @@ const BLANK = {
   example:false, age:30, filing:"single", kids:0, kids6:0, kidOldest:"", spouse:0, prem:0, housing:"rent", actualSave:"", mortgageOff:true, carOff:true,
   buckets:{repairs:1200, gifts:800, vacation:0, car:0, yearly:0}, spouseTake:"", penCola:"yes", pPenCola:"yes",
   payMode:"hourly", hourly:0, hours:40, salary:0, freq:26, takehome:"", extra:0,
-  plan:"unsure", ptype:"403b", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
+  plan:"unsure", ptype:"403b", pctUnit:"dollar", pamt:"", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
   rent:0, car:0, other:0, debts:[], cash:0, rbal:0, years:5, pension:0, taxDone:false,
   hasPartner:"no", pAge:"", pPay:0, pSavings:0, pSaveYear:0, pPension:0, pSS:"", spend:""
 };
 const KEY = "nextstep.v1";
 let S = load();
-function load(){ try{ const raw = localStorage.getItem(KEY); if(raw) return Object.assign({}, BLANK, JSON.parse(raw)); }catch(e){} return JSON.parse(JSON.stringify(EXAMPLE)); }
+function load(){ try{ const raw = localStorage.getItem(KEY); if(raw){ const o = JSON.parse(raw); if(o.pctUnit===undefined) o.pctUnit = "pct"; return Object.assign({}, BLANK, o); } }catch(e){} return JSON.parse(JSON.stringify(EXAMPLE)); }
 function save(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 
 /* ===== helpers ===== */
@@ -465,10 +473,21 @@ function bracketTax(x, br){ let t=0, prev=0; for(const [top,r] of br){ if(x>prev
 const DEBT_TYPES = {card:"Credit card", payday:"Payday or title loan", bnpl:"Buy now, pay later", medical:"Medical bill", student:"Student loan", personal:"Personal loan", other:"Other"};
 
 /* ===== the engine ===== */
+/* what the person puts in, as % of pay, whether they entered dollars per paycheck or a percent */
+function contribPct(s){
+  if(s.pctUnit==="dollar"){ const b = grossPay(s); return b>0 ? Math.round(n(s.pamt)*(n(s.freq)||26)/b*1000)/10 : 0; }
+  return n(s.pct);
+}
+/* "6%" plus the matching dollars per paycheck, so people who think in dollars can act on it */
+function pctWithDollars(s, p){
+  const per = grossPay(s)*p/100/(n(s.freq)||26);
+  return per>0 ? `${p}% of pay (about ${money(per)} a paycheck)` : `${p}% of pay`;
+}
+const ASSUMED_MATCH = {pct:100, upto:3, guess:true};
 function grossPay(s){ return s.payMode==="hourly" ? n(s.hourly)*n(s.hours)*52 : n(s.salary); }
 function matchTerms(s){
   if(s.plan!=="yes" || s.match==="none") return null;
-  if(s.match==="unsure") return "unsure";
+  if(s.match==="unsure") return ASSUMED_MATCH;
   if(s.match==="custom") return {pct:n(s.mpct), upto:n(s.mupto)};
   const [p,u] = s.match.split("-").map(Number); return {pct:p, upto:u};
 }
@@ -489,7 +508,7 @@ function taxModel(s, opts={}){
   const user = base + (opts.extra||0);
   const spouse = s.filing==="mfj" ? n(s.spouse) : 0;
   const wages = user + spouse;
-  const pct = opts.pct!=null ? opts.pct : (s.plan==="yes" ? n(s.pct) : 0);
+  const pct = opts.pct!=null ? opts.pct : (s.plan==="yes" ? contribPct(s) : 0);
   const contrib = Math.min(base*pct/100, F.deferralLimit);
   const isPre = opts.pre!=null ? opts.pre : (s.roth!=="roth");
   const pre = isPre ? contrib : 0;
@@ -656,7 +675,7 @@ function compute(s){
   const extraNet = extraYear>0 ? (extraYear - (mx.trueCost - m.trueCost))/12 : 0;
 
   const terms = matchTerms(s);
-  const pct = s.plan==="yes" ? n(s.pct) : 0;
+  const pct = s.plan==="yes" ? contribPct(s) : 0;
   let matchNow=0, matchFull=0;
   if(terms && terms!=="unsure"){ matchNow = m.base*terms.pct/100*Math.min(pct,terms.upto)/100; matchFull = m.base*terms.pct/100*terms.upto/100; }
   const matchRate = m.base>0 ? matchNow/m.base*100 : 0;
@@ -829,11 +848,12 @@ function stepDetail(id, s, c){
     const perCheck = addYear/(n(s.freq)||26);
     const afterTax = s.roth!=="roth" ? perCheck*(1-Math.max(0,c.preSaves)) : perCheck;
     const vest = s.vest==="0" ? null : s.vest==="unsure" ? "Ask HR how long until the match is fully yours. If you leave before then, some of it goes back." : `The match becomes fully yours after up to ${s.vest} years. If you might leave sooner, still do this: part of it usually stays with you.`;
+    const g = t.guess ? " This assumes a typical match, dollar for dollar up to 3% of pay. Check your benefits website to be sure; if yours is different, pick it in My numbers." : "";
     return { h:`Raise your contribution to ${t.upto}%`,
-      why:`Your employer adds ${t.pct}% of what you put in, up to ${t.upto}% of pay. You're at ${c.pct}%, so you're leaving about ${money(missed)} a year on the table.`,
+      why:`${t.guess?"Most hospitals add":"Your employer adds"} ${t.pct}% of what you put in, up to ${t.upto}% of pay. You're at ${c.pct}%, so you're leaving about ${money(missed)} a year on the table.${g}`,
       money:`Costs you about ${money(afterTax)} a paycheck. Your employer adds about ${money(missed/(n(s.freq)||26))} more each paycheck.`,
       how:[
-        `Log in to your benefits website, open the retirement plan, and change your contribution to ${t.upto}%. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
+        `Log in to your benefits website, open the retirement plan, and change your contribution to ${pctWithDollars(s,t.upto)}. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
         c.preSaves>=0.15 ? "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later." : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : `Pre-tax or Roth both work at your income: each $100 pre-tax saves about $${Math.round(c.preSaves*100)} in tax now.`,
         "If you're asked to pick investments, see \"Choosing investments\" below. Usually that means a low-cost target-date index fund, or the plan's cheapest broad index fund.",
         vest
@@ -1052,7 +1072,7 @@ function render(){
   const sub = {
     number: neg? `${money(-c.left)} a month short` : `${money(c.left)} a month to work with`,
     cushion: `${money(Math.min(c.cash,c.cushionTarget))} of ${money(c.cushionTarget)}`,
-    match: c.terms===null ? (s.plan==="no"?"No plan at work":"No match offered") : c.terms==="unsure" ? "Match not known yet" : `${c.pct}% of ${c.terms.upto}% needed`,
+    match: c.terms===null ? (s.plan==="no"?"No plan at work":"No match offered") : c.terms==="unsure" ? "Match not known yet" : `${c.pct}% of ${c.terms.upto}% needed${c.terms.guess?" (match assumed)":""}`,
     debt: c.expensive.length ? `${money(c.expensive.reduce((a,x)=>a+n(x.balance),0))} at 10% or more` : "None at 10% or more",
     taxes: s.taxDone ? "Checked" : "Credits, W-4, free filing",
     emergency: `${c.efTarget>0?(Math.round(c.cash/(c.efTarget/c.efMonths)*10)/10):0} of ${c.efMonths} months`,
@@ -1267,7 +1287,7 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pctUnit","pamt","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
 const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
@@ -1288,6 +1308,11 @@ function toggles(){
   $("wrap-salary").hidden = S.payMode!=="salary";
   $("wrap-plan").hidden = S.plan!=="yes";
   $("wrap-custom").hidden = S.match!=="custom";
+  const dollars = S.pctUnit==="dollar";
+  $("wrap-pamt").hidden = !dollars; $("wrap-pct").hidden = dollars;
+  const b = grossPay(S), ppy = n(S.freq)||26;
+  $("pct-note").textContent = b<=0 ? "" : dollars ? (n(S.pamt)>0 ? `That's about ${contribPct(S)}% of your pay.` : "")
+    : (n(S.pct)>0 ? `That's about ${money(b*n(S.pct)/100/ppy)} a paycheck before tax.` : "");
   const married = S.filing==="mfj";
   $("wrap-haspartner").hidden = married;
   $("wrap-partner").hidden = !(married || S.hasPartner==="yes");
@@ -1339,7 +1364,7 @@ $("tab-ai").onclick = ()=>show("ai");
 
 /* move plan */
 $("copy-code").onclick = ()=>{ const t=$("code-out"); try{ navigator.clipboard.writeText(t.value).then(()=>{$("code-msg").textContent="Copied.";}).catch(()=>{t.select();$("code-msg").textContent="Selected. Copy it from here.";}); }catch(e){ t.select(); $("code-msg").textContent="Selected. Copy it from here."; } };
-$("load-code").onclick = ()=>{ try{ const o = JSON.parse(decodeURIComponent(escape(atob($("code-in").value.trim())))); S = Object.assign({}, BLANK, o); save(); fillForm(); render(); $("code-msg").textContent="Plan loaded."; show("plan"); }catch(e){ $("code-msg").textContent="That code didn't work. Copy the whole code and try again."; } };
+$("load-code").onclick = ()=>{ try{ const o = JSON.parse(decodeURIComponent(escape(atob($("code-in").value.trim())))); if(o.pctUnit===undefined) o.pctUnit = "pct"; S = Object.assign({}, BLANK, o); save(); fillForm(); render(); $("code-msg").textContent="Plan loaded."; show("plan"); }catch(e){ $("code-msg").textContent="That code didn't work. Copy the whole code and try again."; } };
 
 /* ===== Ask AI: a prompt built from this plan, with the questions a careful adviser would ask ===== */
 const AI_ALWAYS_TOP = [
@@ -1353,7 +1378,7 @@ const AI_SIT = [
   {k:"debt", show:(s,c)=>c.debts.length>0, t:"Rank my debts by interest rate. Steer me away from payday loans, title loans, cash advances and \"debt relief\" companies that charge fees up front — and toward a nonprofit credit counselor (nfcc.org) if I need help.", w:"High-rate debt grows faster than any savings can.",
     hot:(s,c)=>c.predatory.length?`You have a ${c.predatory[0].type==="payday"?"payday or title loan":"debt at "+n(c.predatory[0].rate)+"%"}.`:(c.expensive.length?`Your ${(DEBT_TYPES[c.expensive[0].type]||"debt").toLowerCase()} is at ${n(c.expensive[0].rate)}%.`:"")},
   {k:"match", show:(s,c)=>s.plan!=="no" && c.terms!==null, t:"Check that I'm getting my full employer match. It's free money, and it usually beats anything else I could do with the dollar.", w:"Leaving the match behind is turning down part of your pay.",
-    hot:(s,c)=>s.plan==="unsure"||c.terms==="unsure"?"You're not sure about your plan or match yet.":(c.terms&&c.pct<c.terms.upto?`You put in ${c.pct}%; the full match needs ${c.terms.upto}%.`:"")},
+    hot:(s,c)=>s.plan==="unsure"||c.terms==="unsure"||(c.terms&&c.terms.guess)?"I'm not sure what my employer match is.":(c.terms&&c.pct<c.terms.upto?`You put in ${c.pct}%; the full match needs ${c.terms.upto}%.`:"")},
   {k:"taxes", show:(s,c)=>!s.taxDone, t:"Check the credits I may qualify for — Earned Income Credit, child tax credits, New Jersey credits, the Saver's Credit — and point me to free filing (VITA, IRS Free File), not paid preparers or refund-advance loans.", w:"Working families often leave real money unclaimed.",
     hot:(s,c)=>(c.m.eic||c.m.saver||c.m.actc||c.m.njEitc)?"The calculator thinks you qualify for credits.":""},
   {k:"emerg", show:()=>true, t:"Before suggesting investing beyond the match, check that my emergency savings could cover about three months of must-pay bills.", w:"Without a cushion, one car repair goes on a credit card.",
@@ -1393,8 +1418,8 @@ function aiFacts(s,c){
   else me.push("Debts: none besides housing and car.");
   me.push(`Cash in savings/checking: ${money(c.cash)}. Retirement account balance: ${money(n(s.rbal))}.`);
   if(s.plan==="yes"){
-    const mt = c.terms==="unsure"?"not sure what the match is":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
-    me.push(`Workplace plan: ${plan}, I put in ${c.pct}% (${({pre:"pre-tax",roth:"Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
+    const mt = (c.terms==="unsure"||(c.terms&&c.terms.guess))?"not sure what the match is (assuming 100% of the first 3%)":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
+    me.push(`Workplace plan: ${plan}, I put in ${c.pct}%${s.pctUnit==="dollar"?` (${money(n(s.pamt))} a paycheck)`:""} (${({pre:"pre-tax",roth:"Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
   } else me.push(s.plan==="no"?"Workplace retirement plan: none offered.":"Workplace retirement plan: not sure whether I have one or what's in it.");
   if(n(s.pension)>0) me.push(`Pension expected: about ${money(n(s.pension))}/month${s.penCola==="no"?", not adjusted for inflation":""}.`);
   me.push(`Years worked so far (for Social Security): ${n(s.years)}.`);
