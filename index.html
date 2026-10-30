@@ -1278,6 +1278,7 @@ function render(){
     </div></div></details>`);
   h.push(`</div>`);
 
+  h.push(`<p style="margin-top:20px"><button class="btn primary" type="button" data-go="form" style="width:100%">Change my numbers</button></p>`);
   $("view-plan").innerHTML = h.join("");
   document.querySelectorAll("#view-plan details.fold").forEach(d=>{ if(OPEN.has(d.dataset.fold)) d.open = true; d.addEventListener("toggle", ()=>{ d.open ? OPEN.add(d.dataset.fold) : OPEN.delete(d.dataset.fold); }); });
   const td = $("tax-done"); if(td) td.onclick = ()=>{ S.taxDone=true; S.example=false; save(); render(); window.scrollTo({top:0}); };
@@ -1352,12 +1353,17 @@ $("see-plan").onclick = ()=>{ show("plan"); };
 $("see-plan-2").onclick = ()=>{ show("plan"); };
 $("clear").onclick = ()=>{ S = JSON.parse(JSON.stringify(BLANK)); save(); fillForm(); render(); };
 
-function show(which){
+let VIEW = "plan";
+function show(which, fromBack){
+  if(!fromBack && which!==VIEW){ try{ history.pushState({v:which}, "", "#"+which); }catch(_){} }
+  VIEW = which;
   ["plan","form","ai"].forEach(v=>{ $("view-"+v).hidden = v!==which; $("tab-"+v).setAttribute("aria-selected", v===which); });
   if(which==="form") fillForm();
   if(which==="ai") renderAI();
   window.scrollTo({top:0});
 }
+window.addEventListener("popstate", e=>{ const v = (e.state && e.state.v) || "plan"; show(["plan","form","ai"].includes(v)?v:"plan", true); });
+try{ history.replaceState({v:"plan"}, "", location.pathname + location.search); }catch(_){}
 $("tab-plan").onclick = ()=>show("plan");
 $("tab-form").onclick = ()=>show("form");
 $("tab-ai").onclick = ()=>show("ai");
