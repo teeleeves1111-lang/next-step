@@ -252,7 +252,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
           </div>
           <label class="f">Employer match
             <select id="match">
-              <option value="unsure">Not sure (we'll assume a typical 3%)</option><option value="none">No match</option>
+              <option value="unsure">Not sure (we'll assume 50% of the first 6%)</option><option value="none">No match</option>
               <option value="50-6">50% of the first 6% you put in</option>
               <option value="100-3">100% of the first 3%</option>
               <option value="100-4">100% of the first 4%</option>
@@ -504,7 +504,7 @@ function pctWithDollars(s, p){
   const per = grossPay(s)*p/100/(n(s.freq)||26);
   return per>0 ? `${p}% of pay (about ${money(per)} a paycheck)` : `${p}% of pay`;
 }
-const ASSUMED_MATCH = {pct:100, upto:3, guess:true};
+const ASSUMED_MATCH = {pct:50, upto:6, guess:true};
 function grossPay(s){ return s.payMode==="hourly" ? n(s.hourly)*n(s.hours)*52 : n(s.salary); }
 function matchTerms(s){
   if(s.plan!=="yes" || s.match==="none") return null;
@@ -890,9 +890,9 @@ function stepDetail(id, s, c){
     const perCheck = addYear/(n(s.freq)||26);
     const afterTax = s.roth!=="roth" ? perCheck*(1-Math.max(0,c.preSaves)) : perCheck;
     const vest = s.vest==="0" ? null : s.vest==="unsure" ? "Ask HR how long until the match is fully yours. If you leave before then, some of it goes back." : `The match becomes fully yours after up to ${s.vest} years. If you might leave sooner, still do this: part of it usually stays with you.`;
-    const g = t.guess ? " This assumes a typical match, dollar for dollar up to 3% of pay. Check your benefits website to be sure; if yours is different, pick it in My numbers." : "";
+    const g = t.guess ? " This assumes a common match: 50 cents per dollar on the first 6% of pay. Check your benefits website to be sure; if yours is different, pick it in My numbers." : "";
     return { h:`Raise your contribution to ${t.upto}%`,
-      why:`${t.guess?"Most hospitals add":"Your employer adds"} ${t.pct}% of what you put in, up to ${t.upto}% of pay. You're at ${c.pct}%, so you're leaving about ${money(missed)} a year on the table.${g}`,
+      why:`${t.guess?"Many employers add":"Your employer adds"} ${t.pct}% of what you put in, up to ${t.upto}% of pay. You're at ${c.pct}%, so you're leaving about ${money(missed)} a year on the table.${g}`,
       money:`Costs you about ${money(afterTax)} a paycheck. Your employer adds about ${money(missed/(n(s.freq)||26))} more each paycheck.`,
       how:[
         `Log in to your benefits website, open the retirement plan, and change your contribution to ${pctWithDollars(s,t.upto)}. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
@@ -1475,7 +1475,7 @@ function aiFacts(s,c){
   else me.push("Debts: none besides housing and car.");
   me.push(`Cash in savings/checking: ${money(c.cash)}. Retirement account balance: ${money(n(s.rbal))}.`);
   if(s.plan==="yes"){
-    const mt = (c.terms==="unsure"||(c.terms&&c.terms.guess))?"not sure what the match is (assuming 100% of the first 3%)":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
+    const mt = (c.terms==="unsure"||(c.terms&&c.terms.guess))?"not sure what the match is (assuming 50% of the first 6%)":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
     me.push(`Workplace plan: ${plan}, I put in ${c.pct}%${s.pctUnit==="dollar"?` (${money(n(s.pamt))} a paycheck)`:""} (${({pre:"pre-tax",roth:"Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
   } else me.push(s.plan==="no"?"Workplace retirement plan: none offered.":"Workplace retirement plan: not sure whether I have one or what's in it.");
   if(n(s.pension)>0) me.push(`Pension expected: about ${money(n(s.pension))}/month${s.penCola==="no"?", not adjusted for inflation":""}.`);
