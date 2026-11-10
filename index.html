@@ -402,7 +402,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
   </main>
 
   <footer>
-    <p><b>Education, not individual advice.</b> Numbers are estimates using 2026 federal and New Jersey rules. Taxes and benefits depend on details this app doesn't ask about.</p>
+    <p><b>Education, not individual advice.</b> Next Step is free and sells nothing. It isn't financial, tax or legal advice; for decisions about your own situation, talk to a fee-only advisor or your plan's representative. Numbers are estimates using 2026 federal and New Jersey rules. Taxes and benefits depend on details this app doesn't ask about.</p>
     <p>Private by design: no account, nothing sent anywhere. Your numbers are saved only in this browser.</p>
     <details id="move">
       <summary>Move my plan to another phone</summary>
@@ -1244,7 +1244,7 @@ function render(){
   const also = [];
   if(deps && n(s.age)>=50 && !(n(s.kids)>0)) also.push(`<b>Life insurance.</b> With grown children, you may need less than you think: enough to pay off the mortgage and cover what your ${c.married?"spouse":"partner"} would lose if your income stopped, until Social Security and savings take over. Check what your job provides first; a 10-year level term policy covers any gap. Skip whole life.`);
   else if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, a common starting point is coverage of about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give you one or two times pay for free; a 20-year level term policy covers the rest, often for $30 to $60 a month at mid-life. Skip whole life.`);
-  also.push(`<b>Disability insurance.</b> Your ability to work is worth more than anything you own. Check whether your job's long-term disability plan replaces about 60% of pay, and sign up at open enrollment if it's optional.`);
+  also.push(`<b>Disability insurance.</b> Your ability to work is worth more than anything you own, but you probably don't need to buy your own policy. New Jersey's Temporary Disability Insurance, which comes out of every paycheck, covers up to 26 weeks. For longer, sign up for your job's long-term disability plan at open enrollment if it's optional; it's usually free or cheap. Skip expensive individual policies.`);
   if(kidsN>0 && s.kidOldest!=="" && s.kidOldest!=null){
     const yrs = Math.max(0, 18-oldest);
     also.push(`<b>College${yrs>0?`, in about ${plural(yrs,"year")}`:""}.</b> Open an NJBEST 529 plan and set up a small automatic deposit. File the FAFSA every year starting senior year of high school; New Jersey's Tuition Aid Grant and community college grants depend on it. Keep saving for retirement first. Loans exist for college, not for retirement.`);
@@ -1253,7 +1253,7 @@ function render(){
   if(n(s.endCosts)>0) also.push(`<b>When college or other costs end.</b> That frees about <span class="num">${money(n(s.endCosts))}</span> a month. Send it straight to savings the month it ends${n(s.age)>=50?`: half to your ${s.ptype==="401k"?"401(k)":"403(b)"}, where you can put in more from 50 and much more from 60 to 63, and half to emergency savings until that's done`:""}, before it gets absorbed into spending.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
   also.push(`<b>Beneficiaries and a will.</b> Your ${s.ptype==="401k"?"401(k)":"403(b)"} and life insurance go to whoever is named on the account, not whoever is in your will. Log in and check the names, especially after a marriage, divorce or new baby. A simple will, a power of attorney and a health care proxy cover the rest; a New Jersey attorney often does all three for a flat fee.`);
-  also.push(`<b>A health savings account (HSA).</b> If you pick a high-deductible health plan at open enrollment, the HSA that comes with it is the best tax deal there is: no tax going in, while it grows, or coming out for medical bills, and it stays yours if you leave. If you can, pay small bills out of pocket and let it grow for health costs in retirement.`);
+  also.push(`<b>A health savings account (HSA), if your job offers one.</b> Many hospitals don't. If yours offers a high-deductible health plan with an HSA, it's the best tax deal there is: no tax going in, while it grows, or coming out for medical bills, and it stays yours if you leave. If you can, pay small bills out of pocket and let it grow for health costs in retirement.`);
   if(n(s.age)>=55) also.push(`<b>Getting close: Social Security and Medicare.</b> You can stop working before you claim Social Security; each year you wait past 62, up to 70, raises the check for life. ${c.married?"If you're married, the bigger earner waiting matters most, because the larger check is the one a surviving spouse keeps. ":""}Sign up for Medicare in the 3 months before you turn 65 unless you're still covered by a job; signing up late can mean a lifelong penalty. Check your real estimate at ssa.gov/myaccount.`);
 
 
