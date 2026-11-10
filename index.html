@@ -298,7 +298,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
 
       <details class="more" id="more-detail">
         <summary>Add more detail (optional)</summary>
-        <p class="small muted" style="margin-top:6px">Children's ages, health premiums, extra shifts, pensions, a spouse's savings and retirement spending. Each one sharpens your plan.</p>
+        <p class="small muted" style="margin-top:6px">Children's ages, health premiums, extra shifts, child support or an inheritance, pensions, a spouse's savings and retirement spending. Each one sharpens your plan.</p>
         <div style="display:flex;flex-direction:column;gap:26px;margin-top:18px">
           <fieldset id="fs-kids">
             <legend>Children</legend>
@@ -313,6 +313,14 @@ details.aiset summary{font-weight:700;cursor:pointer}
             <label class="f" id="wrap-spousetake">Spouse's take-home per paycheck<small>Teachers and other public workers pay into a pension from each check, so their take-home is lower than taxes alone suggest. Leave blank and we'll estimate it.</small><input id="spouseTake" type="number" inputmode="decimal" min="0"></label>
             <label class="f" id="wrap-prem">Health, dental and vision premiums per paycheck<small>On your pay stub. Makes the take-home estimate more accurate.</small><input id="prem" type="number" inputmode="decimal" min="0"></label>
             <label class="f">Extra shifts, overtime or a second job, per month<small>Before taxes. Your plan budgets without it.</small><input id="extra" type="number" inputmode="decimal" min="0"></label>
+          </fieldset>
+
+          <fieldset>
+            <legend>Other money coming in</legend>
+            <label class="f">Each month, not from a paycheck<small>Child support, alimony, rent from a property, help from family. Enter what actually reaches you, after any costs and taxes.</small><input id="oiAmt" type="number" inputmode="decimal" min="0"></label>
+            <label class="f" id="wrap-oiend">Stops in how many years<small>Leave blank if it keeps going into retirement, like rent from a property. If it stops, we assume what it pays for stops too.</small><input id="oiEnd" type="number" inputmode="numeric" min="0" max="60"></label>
+            <label class="f">One-time money you expect<small>An inheritance, a home sale, a settlement. We count it as retirement savings once it arrives. Leave 0 if it's not likely.</small><input id="lumpAmt" type="number" inputmode="decimal" min="0"></label>
+            <label class="f" id="wrap-lumpyr">In how many years<input id="lumpYr" type="number" inputmode="numeric" min="0" max="60"></label>
           </fieldset>
 
           <fieldset id="fs-plan">
@@ -462,7 +470,7 @@ const EXAMPLE = {
   rent:2750, car:540, other:2650,
   debts:[{type:"card",balance:7400,rate:23,min:220},{type:"personal",balance:5200,rate:12,min:175}],
   cash:2800, rbal:92000, years:23, pension:0, taxDone:false,
-  ptOn:"no", ptYr:2, ptLen:5, ptShare:60, hasPartner:"no", pAge:48, pPay:0, pSavings:38000, pSaveYear:2400, pPension:0, pSS:"", spend:""
+  ptOn:"no", ptYr:2, ptLen:5, ptShare:60, hasPartner:"no", pAge:48, pPay:0, pSavings:38000, pSaveYear:2400, pPension:0, pSS:"", spend:"", oiAmt:0, oiEnd:"", lumpAmt:0, lumpYr:""
 };
 const BLANK = {
   example:false, age:30, filing:"single", kids:0, kids6:0, kidOldest:"", spouse:0, prem:0, housing:"rent", actualSave:"", mortgageOff:true, carOff:true,
@@ -470,7 +478,7 @@ const BLANK = {
   payMode:"hourly", hourly:0, hours:40, salary:0, freq:26, takehome:"", extra:0,
   plan:"unsure", ptype:"403b", pctUnit:"dollar", pamt:"", pct:0, roth:"unsure", match:"unsure", mpct:0, mupto:0, vest:"unsure",
   rent:0, car:0, other:0, debts:[], cash:0, rbal:0, years:5, pension:0, taxDone:false,
-  ptOn:"no", ptYr:2, ptLen:5, ptShare:60, hasPartner:"no", pAge:"", pPay:0, pSavings:0, pSaveYear:0, pPension:0, pSS:"", spend:""
+  ptOn:"no", ptYr:2, ptLen:5, ptShare:60, hasPartner:"no", pAge:"", pPay:0, pSavings:0, pSaveYear:0, pPension:0, pSS:"", spend:"", oiAmt:0, oiEnd:"", lumpAmt:0, lumpYr:""
 };
 const KEY = "nextstep.v1";
 let S = load();
@@ -585,6 +593,15 @@ function ptF(s, y){
 }
 /* full-time years lost to part-time before stopping work in `yrs` years */
 function ptLost(s, yrs){ let x=0; for(let y=0;y<yrs;y++) x += 1-ptF(s,y); return x; }
+/* other monthly money: counted now; counted in retirement only if it has no end date */
+function oiNow(s){ return n(s.oiAmt); }
+function oiRet(s){ return n(s.oiAmt)>0 && (s.oiEnd===""||s.oiEnd==null) ? n(s.oiAmt) : 0; }
+/* one-time money (inheritance, home sale) as a lump in savings at retirement, `yrs` years from now, today's dollars */
+function lumpAt(s, yrs){
+  const a = n(s.lumpAmt); if(!(a>0)) return 0;
+  const L = Math.max(0, n(s.lumpYr)), r = RULES.realReturn;
+  return L<=yrs ? a*Math.pow(1+r, yrs-L) : a/Math.pow(1+r, L-yrs);
+}
 function catchUp(a){ return a>=60&&a<=63 ? RULES.fed.catchUp60 : a>=50 ? RULES.fed.catchUp50 : 0; }
 function monthsTo(target, have, perMonth){ if(have>=target) return 0; if(perMonth<=0) return null; return Math.ceil((target-have)/perMonth); }
 function plural(k, w){ return k + " " + w + (k===1?"":"s"); }
@@ -615,7 +632,8 @@ function retireAt(s, c, R, addPct=0){
     psav = pb*draw/12; ppen = n(s.pPension)*(s.pPenCola==="no" ? RULES.flatPension : 1);
   }
   const pen = n(s.pension)*(s.penCola==="no" ? RULES.flatPension : 1);
-  const gross = ssOwn + sav + pen + ssP + psav + ppen;
+  const lump = lumpAt(s, yrs)*draw/12, oth = oiRet(s);   // not taxed: inherited money and support are not income; rent entered after tax
+  const gross = ssOwn + sav + pen + ssP + psav + ppen + lump + oth;
   const ownTaxable = s.roth==="roth" ? 0 : sav;
   let tax;
   const o65 = (R>=65?1:0) + (c.partner && pa>=65 ? 1 : 0);
@@ -627,7 +645,7 @@ function retireAt(s, c, R, addPct=0){
   const need = c.need + health;
   const net = gross - tax;
   return {R, pa, gross, tax, net, need, health, pre65, short: Math.max(0, need-net), covered: net>=need,
-          ssOwn, ssP, sav, psav, pen, ppen};
+          ssOwn, ssP, sav, psav, pen, ppen, lump, oth};
 }
 function retirePlan(s, c){
   const age = n(s.age);
@@ -690,7 +708,8 @@ function compute(s){
   const bills = n(s.rent)+n(s.car)+n(s.other);
   const debts = (s.debts||[]).filter(d=>n(d.balance)>0);
   const mins = debts.reduce((a,d)=>a+n(d.min),0);
-  const left = take - bills - mins;
+  const oi = oiNow(s);
+  const left = take + oi - bills - mins;
   const extraYear = n(s.extra)*12;
   const mx = extraYear>0 ? taxModel(s,{extra:extraYear}) : m;
   const extraNet = extraYear>0 ? (extraYear - (mx.trueCost - m.trueCost))/12 : 0;
@@ -755,7 +774,8 @@ function compute(s){
     p = {ss:pss, sav:bal*RULES.drawRate/12, pension:n(s.pPension), ssEstimated:p.ssEstimated, pay:pPay};
   }
   const pension = n(s.pension);
-  const retIncome = ownSS + savMonthly + pension + p.ss + p.sav + p.pension;
+  const lumpMonthly = lumpAt(s, yrsLeft)*RULES.drawRate/12, oiR = oiRet(s);
+  const retIncome = ownSS + savMonthly + pension + p.ss + p.sav + p.pension + lumpMonthly + oiR;
 
   // taxes in retirement
   const ownSavTaxable = s.roth==="roth" ? 0 : savMonthly;
@@ -770,13 +790,14 @@ function compute(s){
   // what's actually saved, and what's actually spent today
   const saveKnown = s.actualSave!=="" && s.actualSave!=null;
   const actualSave = saveKnown ? n(s.actualSave) : null;
-  const spendNow = take - (saveKnown ? actualSave : 0);
+  const spendNow = take + oi - (saveKnown ? actualSave : 0);
   const ownCarryKnown = n(s.ownCarry)>0;
   const ownCarry = s.housing==="own" ? (ownCarryKnown ? Math.min(n(s.rent), n(s.ownCarry)) : n(s.rent)/3) : 0;   // property tax + insurance stay
   const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) - ownCarry : 0;
   const dropCar = s.carOff!==false ? n(s.car) : 0;
   const dropEnd = n(s.endCosts);
-  const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins - dropEnd);
+  const dropOi = oi - oiR;   // money that stops before retirement: so does what it pays for
+  const needAuto = Math.max(0, spendNow - dropMort - dropCar - mins - dropEnd - dropOi);
   const spendEntered = n(s.spend)>0;
   const myNeed = spendEntered ? n(s.spend) : needAuto;
   const pSpendKnown = n(s.pSpend)>0;
@@ -791,7 +812,7 @@ function compute(s){
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,efMonths,late,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
-          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA,ownCarry,ownCarryKnown,myNeed,pNeed,pSpendKnown};
+          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA,ownCarry,ownCarryKnown,myNeed,pNeed,pSpendKnown,oi,lumpMonthly,oiR};
 }
 
 /* ===== steps ===== */
@@ -1047,9 +1068,10 @@ function render(){
   const neg = c.left<0;
   h.push(`<section aria-labelledby="h-month"><div class="eyebrow" id="h-month">This month</div>
     <div class="big num ${neg?"neg":"pos"}">${neg? money(-c.left)+" short" : money(c.left)+" left"}</div>
-    <p class="muted">${neg? "Must-pay bills are more than take-home pay." : "After must-pay bills and debt minimums, from base pay only."}</p>
+    <p class="muted">${neg? "Must-pay bills are more than take-home pay." : (c.oi>0 ? "After must-pay bills and debt minimums, from base pay and other money coming in." : "After must-pay bills and debt minimums, from base pay only.")}</p>
     <div class="rows">
       <div class="row"><span>Take-home pay${c.estimated?" (estimated)":""}</span><span>${money(c.take)}</span></div>
+      ${c.oi>0?`<div class="row"><span>Other money coming in</span><span>+${money(c.oi)}</span></div>`:""}
       <div class="row"><span>Must-pay bills</span><span>−${money(c.bills)}</span></div>
       ${c.mins>0?`<div class="row"><span>Debt minimums</span><span>−${money(c.mins)}</span></div>`:""}
       <div class="row total"><span>${neg?"Gap":"Left for your step"}</span><span>${money(c.left)}</span></div>
@@ -1125,7 +1147,7 @@ function render(){
   if(RETAGE==null || !rp.rows.some(r=>r.R===RETAGE)) RETAGE = rp.earliest ?? (rp.rows.find(r=>r.R===67) ? 67 : (rp.rows[rp.rows.length-1]||{}).R);
   const ra = rp.rows.find(r=>r.R===RETAGE) || retireAt(s,c,67);
   const total = ra.net, gross = ra.gross;
-  const ssAll = ra.ssOwn+ra.ssP, savAll = ra.sav+ra.psav, penAll = ra.pen+ra.ppen;
+  const ssAll = ra.ssOwn+ra.ssP, savAll = ra.sav+ra.psav+ra.lump, penAll = ra.pen+ra.ppen+ra.oth;
   const scale = Math.max(gross, ra.need, 1);
   const k = gross>0 ? total/gross : 1;
   const w = v => (v/scale*100).toFixed(2);
@@ -1176,7 +1198,8 @@ function render(){
       ${c.dropMort>0?`<div class="row"><span>Mortgage paid off (property tax and insurance of ${money(c.ownCarry)}${c.ownCarryKnown?"":", estimated,"} stay)</span><span>−${money(c.dropMort)}</span></div>`:""}
       ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
       ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
-      ${c.dropEnd>0?`<div class="row"><span>College and other costs ended</span><span>−${money(c.dropEnd)}</span></div>`:""}`) + `
+      ${c.dropEnd>0?`<div class="row"><span>College and other costs ended</span><span>−${money(c.dropEnd)}</span></div>`:""}
+      ${c.oi-c.oiR>0?`<div class="row"><span>Other money that will have stopped, and what it paid for</span><span>−${money(c.oi-c.oiR)}</span></div>`:""}`) + `
       ${c.pNeed>0?`<div class="row"><span>Your partner's spending${c.pSpendKnown?"":" (assumed the same as yours)"}</span><span>+${money(c.pNeed)}</span></div>`:""}
       <div class="row"><span>${ra.pre65?"Health insurance until 65":"Medicare premiums"}</span><span>+${money(ra.health)}</span></div>
       <div class="row total"><span>Spending at ${ra.R}</span><span>${money(ra.need)}</span></div>
@@ -1204,13 +1227,14 @@ function render(){
     </div>
     <div class="legend num" style="flex-direction:column;gap:4px">
       <span class="l1">Social Security ${money(ssAll)}${part(ra.ssOwn,ra.ssP)}</span>
-      ${penAll>0?`<span class="l3">Pensions ${money(penAll)}${part(ra.pen,ra.ppen)}</span>`:""}
-      <span class="l2">From savings ${money(savAll)}${part(ra.sav,ra.psav)}</span>
+      ${ra.pen+ra.ppen>0?`<span class="l3">Pensions ${money(ra.pen+ra.ppen)}${part(ra.pen,ra.ppen)}</span>`:""}
+      ${ra.oth>0?`<span class="l3">Other money coming in ${money(ra.oth)}</span>`:""}
+      <span class="l2">From savings ${money(savAll)}${ra.lump>=1?` (including ${money(ra.lump)} from one-time money)`:part(ra.sav,ra.psav)}</span>
       ${ra.tax>=1?`<span class="l4">Taxes −${money(ra.tax)}</span>`:""}
     </div>
     ${gross>0 && ra.tax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
     <p class="small" style="font-weight:700;margin-top:4px">Spending at ${ra.R}</p>${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p>
-    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${s.roth==="roth"?" Your Roth savings come out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
+    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${n(s.lumpAmt)>0?" One-time money is counted as if it's invested once it arrives and isn't taxed when it comes in, which is true of inheritances; a home sale or settlement can owe tax.":""}${s.roth==="roth"?" Your Roth savings come out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
     </div></details>
   </div></details>`);
 
@@ -1310,7 +1334,7 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["ptOn","ptYr","ptLen","ptShare","ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pctUnit","pamt","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["oiAmt","oiEnd","lumpAmt","lumpYr","ptOn","ptYr","ptLen","ptShare","ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pctUnit","pamt","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
 const CHECKS = ["mortgageOff","carOff"];
 function fillForm(){
@@ -1332,6 +1356,8 @@ function toggles(){
   $("wrap-plan").hidden = S.plan!=="yes";
   $("wrap-custom").hidden = S.match!=="custom";
   $("wrap-pt").hidden = S.ptOn!=="yes";
+  $("wrap-oiend").hidden = !(n(S.oiAmt)>0);
+  $("wrap-lumpyr").hidden = !(n(S.lumpAmt)>0);
   const dollars = S.pctUnit==="dollar";
   $("wrap-pamt").hidden = !dollars; $("wrap-pct").hidden = dollars;
   const b = grossPay(S), ppy = n(S.freq)||26;
@@ -1399,7 +1425,7 @@ $("load-code").onclick = ()=>{ try{ const o = JSON.parse(decodeURIComponent(esca
 const AI_ALWAYS_TOP = [
   {k:"clarify", t:"Before you give me a plan, ask me up to five questions you need answered, and wait for my answers.", w:"Advice built on a wrong guess about your life doesn't help."},
   {k:"real", t:"Keep every suggestion inside what I actually have left each month (the numbers below). No generic \"save 15%\" advice if my budget can't do it.", w:"Advice that doesn't fit your paycheck just makes you feel worse."},
-  {k:"assume", t:"Question anything I treat as certain — overtime continuing, a refund coming, my job, my health — and tell me what happens if it doesn't.", w:"Plans break where you didn't expect them to."}
+  {k:"assume", t:"Question anything I treat as certain — overtime continuing, support payments or an inheritance, a refund coming, my job, my health — and tell me what happens if it doesn't.", w:"Plans break where you didn't expect them to."}
 ];
 const AI_SIT = [
   {k:"gap", show:(s,c)=>c.left<0, t:"Help me close my monthly gap first. Don't suggest anything that needs money I don't have yet.", w:"Every other step needs a little room each month.",
@@ -1442,6 +1468,8 @@ function aiFacts(s,c){
   me.push(`Age ${n(s.age)}; ${fil}${n(s.kids)>0?`; ${n(s.kids)} ${n(s.kids)===1?"child":"children"} under 17${n(s.kids6)>0?` (${n(s.kids6)} under 6)`:""}`:"; no children under 17"}.`);
   if(s.filing==="mfj") me.push(`Spouse's pay before taxes: ${n(s.spouse)>0?money(n(s.spouse))+" a year":"none"}.`);
   me.push(`I work at a hospital in New Jersey. Pay: ${s.payMode==="hourly"?`${money(n(s.hourly))}/hour × ${n(s.hours)} hours a week (about ${money(grossPay(s))} a year)`:`${money(n(s.salary))} a year salary`}, paid ${({52:"weekly",26:"every two weeks",24:"twice a month",12:"monthly"})[n(s.freq)||26]||"every two weeks"}.${n(s.extra)>0?` Extra shifts: about ${money(n(s.extra))} a month before tax (not guaranteed).`:""}`);
+  if(n(s.oiAmt)>0) me.push(`Other money coming in (child support, alimony, rent or similar): about ${money(n(s.oiAmt))}/month after costs and taxes, ${s.oiEnd===""||s.oiEnd==null?"continuing into retirement":`stopping in about ${n(s.oiEnd)} years`}.`);
+  if(n(s.lumpAmt)>0) me.push(`One-time money expected (inheritance, home sale or similar): about ${money(n(s.lumpAmt))} in about ${n(s.lumpYr)} years. Not guaranteed.`);
   me.push(`Housing: ${s.housing==="own"?"own, mortgage":"rent"} ${money(n(s.rent))}/month. Car payment ${money(n(s.car))}/month. Other must-pay bills ${money(n(s.other))}/month.`);
   if(c.debts.length) me.push("Debts: "+c.debts.map(d=>`${DEBT_TYPES[d.type]||"debt"} ${money(n(d.balance))} at ${n(d.rate)}%, minimum ${money(n(d.min))}/month`).join("; ")+".");
   else me.push("Debts: none besides housing and car.");
@@ -1456,7 +1484,7 @@ function aiFacts(s,c){
   if(c.partner) me.push(`Partner's retirement savings: ${money(n(s.pSavings))}, adding about ${money(n(s.pSaveYear))}/year${n(s.pPension)>0?`; pension about ${money(n(s.pPension))}/month`:""}.`);
 
   calc.push(`Take-home pay: about ${money(c.take)}/month${c.estimated?" (estimated by the calculator, not from a real paycheck)":""}. Must-pay bills ${money(c.bills)}${c.mins>0?` and debt minimums ${money(c.mins)}`:""}/month.`);
-  calc.push(c.left<0?`Short ${money(-c.left)} a month: bills and minimums are more than take-home pay.`:`Left each month after bills and minimums: ${money(c.left)} (base pay only).`);
+  calc.push(c.left<0?`Short ${money(-c.left)} a month: bills and minimums are more than take-home pay${c.oi>0?" plus other money coming in":""}.`:`Left each month after bills and minimums: ${money(c.left)} (base pay${c.oi>0?" plus other money coming in":" only"}).`);
   if(c.saveKnown) calc.push(`My savings actually grow about ${money(c.actualSave)} a month.`);
   if(c.extraNet>0) calc.push(`Extra shifts add about ${money(c.extraNet)}/month after tax (not counted above).`);
   if(c.m.refund>=300) calc.push(`Expected tax refund: about ${money(c.m.refund)}${c.m.eic?`, including about ${money(c.m.eic)} Earned Income Credit`:""}.`);
