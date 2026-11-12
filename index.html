@@ -327,7 +327,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
             <legend>Your retirement plan</legend>
             <div class="pair">
               <label class="f">Plan type<select id="ptype"><option value="403b">403(b)</option><option value="401k">401(k)</option></select></label>
-              <label class="f">Contributions are<select id="roth"><option value="pre">Pre-tax</option><option value="roth">Roth</option><option value="unsure">Not sure</option></select></label>
+              <label class="f">Contributions are<select id="roth"><option value="pre">Pre-tax</option><option value="roth">Roth</option><option value="split">Some of each</option><option value="unsure">Not sure</option></select></label>
             </div>
             <label class="f">When is the match fully yours?
               <select id="vest"><option value="0">Right away</option><option value="3">After up to 3 years</option><option value="6">After up to 6 years</option><option value="unsure">Not sure</option></select>
@@ -523,6 +523,18 @@ function eitc(earned, agi, kids, filing, age){
   return Math.max(0, Math.min(phasedIn, phasedOut));
 }
 /* taxes for the household; opts.pct overrides contribution %, opts.pre forces pre-tax true/false, opts.extra adds yearly wages */
+// Share of new contributions going in pre-tax: all, none (Roth) or half ("Some of each")
+function preShare(s){ return s.roth==="roth" ? 0 : s.roth==="split" ? 0.5 : 1; }
+// Roth or pre-tax, in one line, for the retirement step
+function rothPick(s,c){
+  const rp = Math.round(Math.max(0,c.preSaves)*100), big = n(s.age)>=45 && n(s.rbal)>=250000;
+  let t = `Pre-tax or Roth? Each $100 you put in pre-tax lowers your tax this year by about $${rp}.`;
+  if(c.preSaves>=0.15) t += " That's more than most retirees pay, so pre-tax is a good deal for you.";
+  else if(c.preSaves<=0.10) t += " That's small, so Roth is usually the better choice: it comes out tax-free later.";
+  else t += " Either choice is reasonable.";
+  if(big && c.preSaves>0.10) t += ` You already have about ${money(n(s.rbal))} saved${s.roth==="split"?", so splitting new money between pre-tax and Roth, as you are, is a smart choice":s.roth==="roth"?". Choosing \"Some of each\" would lower your tax now and still keep building your Roth":", likely almost all pre-tax, so think about splitting new money, say half pre-tax and half Roth"}. Every pre-tax dollar you take out later counts as income, which can make more of your Social Security taxable and raise Medicare premiums. Roth money can pay for a big expense, like a roof or a car, without that, and it never has to come out.`;
+  return t;
+}
 function taxModel(s, opts={}){
   const F = RULES.fed, J = RULES.nj;
   const base = grossPay(s);
@@ -531,8 +543,7 @@ function taxModel(s, opts={}){
   const wages = user + spouse;
   const pct = opts.pct!=null ? opts.pct : (s.plan==="yes" ? contribPct(s) : 0);
   const contrib = Math.min(base*pct/100, F.deferralLimit);
-  const isPre = opts.pre!=null ? opts.pre : (s.roth!=="roth");
-  const pre = isPre ? contrib : 0;
+  const pre = contrib*(opts.pre!=null ? (opts.pre?1:0) : preShare(s));
   const kids = Math.max(0, Math.round(n(s.kids)));
   const kids6 = Math.min(kids, Math.max(0, Math.round(n(s.kids6))));
   const f = s.filing;
@@ -634,7 +645,7 @@ function retireAt(s, c, R, addPct=0){
   const pen = n(s.pension)*(s.penCola==="no" ? RULES.flatPension : 1);
   const lump = lumpAt(s, yrs)*draw/12, oth = oiRet(s);   // not taxed: inherited money and support are not income; rent entered after tax
   const gross = ssOwn + sav + pen + ssP + psav + ppen + lump + oth;
-  const ownTaxable = s.roth==="roth" ? 0 : sav;
+  const ownTaxable = sav*preShare(s);
   let tax;
   const o65 = (R>=65?1:0) + (c.partner && pa>=65 ? 1 : 0);
   if(c.married) tax = retireTax(12*(ssOwn+ssP), 12*(ownTaxable+pen+psav+ppen), "mfj", 2, o65)/12;
@@ -778,7 +789,7 @@ function compute(s){
   const retIncome = ownSS + savMonthly + pension + p.ss + p.sav + p.pension + lumpMonthly + oiR;
 
   // taxes in retirement
-  const ownSavTaxable = s.roth==="roth" ? 0 : savMonthly;
+  const ownSavTaxable = savMonthly*preShare(s);
   let retTax;
   if(married) retTax = retireTax(12*(ownSS+p.ss), 12*(ownSavTaxable+pension+p.sav+p.pension), "mfj", 2)/12;
   else {
@@ -888,7 +899,7 @@ function stepDetail(id, s, c){
     const addPct = t.upto - c.pct;
     const addYear = c.m.base*addPct/100;
     const perCheck = addYear/(n(s.freq)||26);
-    const afterTax = s.roth!=="roth" ? perCheck*(1-Math.max(0,c.preSaves)) : perCheck;
+    const afterTax = perCheck*(1-preShare(s)*Math.max(0,c.preSaves));
     const vest = s.vest==="0" ? null : s.vest==="unsure" ? "Ask HR how long until the match is fully yours. If you leave before then, some of it goes back." : `The match becomes fully yours after up to ${s.vest} years. If you might leave sooner, still do this: part of it usually stays with you.`;
     const g = t.guess ? " This assumes a common match: 50 cents per dollar on the first 6% of pay. Check your benefits website to be sure; if yours is different, pick it in My numbers." : "";
     return { h:`Raise your contribution to ${t.upto}%`,
@@ -896,7 +907,7 @@ function stepDetail(id, s, c){
       money:`Costs you about ${money(afterTax)} a paycheck. Your employer adds about ${money(missed/(n(s.freq)||26))} more each paycheck.`,
       how:[
         `Log in to your benefits website, open the retirement plan, and change your contribution to ${pctWithDollars(s,t.upto)}. Or tell HR: "Please change my ${s.ptype==="401k"?"401(k)":"403(b)"} contribution to ${t.upto}%."`,
-        c.preSaves>=0.15 ? "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later." : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : `Pre-tax or Roth both work at your income: each $100 pre-tax saves about $${Math.round(c.preSaves*100)} in tax now.`,
+        c.preSaves>=0.15 ? (n(s.age)>=45 && n(s.rbal)>=250000 ? "Choose pre-tax, or split it, say half pre-tax and half Roth. Pre-tax lowers your taxes now; with a large pre-tax balance already, some Roth money gives you more control over your taxes in retirement." : "Choose pre-tax. For your income it lowers your taxes now by more than you're likely to pay later.") : c.preSaves<=0.10 ? "Choose Roth if your plan offers it. For your income, pre-tax saves little now, and Roth money comes out tax-free later." : `Pre-tax or Roth both work at your income: each $100 pre-tax saves about $${Math.round(c.preSaves*100)} in tax now.`,
         "If you're asked to pick investments, see \"Choosing investments\" below. Usually that means a low-cost target-date index fund, or the plan's cheapest broad index fund.",
         vest
       ].filter(Boolean)};
@@ -918,7 +929,7 @@ function stepDetail(id, s, c){
       const keep = c.terms && c.terms!=="unsure" ? c.terms.upto : 0;
       if(c.pct>keep){
         const ppy = n(s.freq)||26, cut = c.m.base*(c.pct-keep)/100/ppy;
-        const up = s.roth==="roth" ? cut : cut*(1-Math.max(0,c.preSaves));
+        const up = cut*(1-preShare(s)*Math.max(0,c.preSaves));
         how.push(`To pay it off faster, you could lower your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${keep>0?keep+"% for now, which still gets the full match":"a smaller amount for now"}. That frees ${money(cut)} a paycheck, but your take-home rises only about ${money(up)}${s.roth==="roth"?"":", because that money is now taxed"}. Send exactly that much to the card, and put a restart date on your calendar: the paycheck after the card hits zero.`);
       }
     }
@@ -939,9 +950,11 @@ function stepDetail(id, s, c){
     if(m.saver>0) credits.push(`Saver's Credit for retirement saving: about ${money(m.saver)}`);
     if(n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13))) credits.push(`Child and Dependent Care Credit, if you pay for child care: federal and New Jersey`);
     const rp = Math.round(c.preSaves*100);
+    const bigPre = n(s.age)>=45 && n(s.rbal)>=250000 && s.plan==="yes";
     const rothLine = `Each $100 you put in pre-tax lowers your total tax this year by about $${rp}, counting federal tax, New Jersey tax and credits.` +
       (s.ptype!=="401k" ? " New Jersey doesn't give a tax break for 403(b) money, so that part comes from federal tax and credits only." : "") +
-      (c.preSaves>=0.15 ? " That's more than most retirees pay, so pre-tax is the better deal for you." : c.preSaves<=0.10 ? " That's small, so Roth is usually the better deal: no tax later." : " Either choice is reasonable.");
+      (c.preSaves>=0.15 ? " That's more than most retirees pay, so pre-tax is the better deal for you." : c.preSaves<=0.10 ? " That's small, so Roth is usually the better deal: no tax later." : " Either choice is reasonable.") +
+      (bigPre ? ` You already have about ${money(n(s.rbal))} saved, ${s.roth==="split"?"so splitting new money between pre-tax and Roth is a good choice":s.roth==="roth"?"so Roth gives you a tax-free bucket alongside it":"likely almost all pre-tax, so think about splitting new money, say half pre-tax and half Roth"}. Every pre-tax dollar you take out later counts as income, which can make more of your Social Security taxable and raise Medicare premiums. Roth money can pay for a big expense, like a roof or a car, without that, and it never has to come out.` : "");
     return { h:"Check your taxes and credits", why: credits.length ? `Based on your numbers, you may get these back at tax time:` : "You may not qualify for the big credits, but filing free and setting withholding right still saves money.",
       list: credits.length ? credits : null,
       money: credits.length ? `About ${money(Math.max(0,m.refund))} expected back when you file.` : null,
@@ -978,6 +991,7 @@ function stepDetail(id, s, c){
       money: `Raise it by 1% now. That's about ${money(c.m.base*.01/(n(s.freq)||26))} a paycheck before tax.`,
       how:[
         "Turn on automatic yearly increases if your plan has them. Otherwise raise it 1% every January and with every raise.",
+        s.plan==="yes" ? rothPick(s,c) : null,
         n(s.age)>=50 ? `At ${Math.floor(n(s.age))} you can put in more than the usual ${money(RULES.fed.deferralLimit)} limit: ${money(RULES.fed.catchUp50)} more a year${n(s.age)>=60&&n(s.age)<=63?`, or ${money(RULES.fed.catchUp60)} more from 60 to 63`:""}. If your pay last year, counting overtime and differentials, was over $150,000, the extra has to go in as Roth.` : null,
         s.plan==="no" ? `No plan at work? Open a Roth IRA at a low-cost firm and set up an automatic deposit. The 2026 limit is ${money(RULES.fed.iraLimit)}.` : "Once you're past the match, a Roth IRA is another good place for savings.",
         "Pick low-cost funds (see \"Choosing investments\" below) and leave them alone.",
@@ -1009,7 +1023,7 @@ function paydayPlan(s, c, steps){
     if(id==="cushion") take(c.cushionTarget-c.cash, "Starter cushion", `until it reaches ${money(c.cushionTarget)}`, "cushion");
     if(id==="match" && c.terms && c.terms!=="unsure"){
       const add = c.m.base*(c.terms.upto-c.pct)/100/ppy;
-      take(s.roth!=="roth" ? add*(1-Math.max(0,c.preSaves)) : add, `Raise your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${c.terms.upto}%`, "comes out of your paycheck; this is what it costs after tax", "match");
+      take(add*(1-preShare(s)*Math.max(0,c.preSaves)), `Raise your ${s.ptype==="401k"?"401(k)":"403(b)"} to ${c.terms.upto}%`, "comes out of your paycheck; this is what it costs after tax", "match");
     }
     i++;
   }
@@ -1234,7 +1248,7 @@ function render(){
     </div>
     ${gross>0 && ra.tax/gross<.05 ? `<p class="small muted">Taxes are small here because at this income most Social Security isn't taxed, and New Jersey doesn't tax Social Security and excludes most retirement income.</p>` : ""}
     <p class="small" style="font-weight:700;margin-top:4px">Spending at ${ra.R}</p>${spendRows}<p class="small muted">Before 65, health insurance is estimated at ${money(RULES.health.pre65)} a month per person on the marketplace; subsidies can lower it a lot. After 65, Medicare premiums are about ${money(RULES.health.medicare)} a month per person. You can enter your own spending in My numbers.</p>
-    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${n(s.lumpAmt)>0?" One-time money is counted as if it's invested once it arrives and isn't taxed when it comes in, which is true of inheritances; a home sale or settlement can owe tax.":""}${s.roth==="roth"?" Your Roth savings come out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
+    <p class="small muted">Social Security starts when you stop working (62 at the earliest): about 70% of the full amount at 62, 100% at 67, 124% at 70. ${c.married?"A spouse gets at least half the other's benefit. ":""}It's a rough estimate from pay and years worked; see real numbers at ssa.gov/myaccount. ${c.partner?"Assumes you both stop working the same year. ":""}Savings grow ${Math.round(RULES.realReturn*100)}% a year after inflation; about 4% a year is taken out (a little less if you retire before 65). Taxes use today's federal and New Jersey rules.${n(s.lumpAmt)>0?" One-time money is counted as if it's invested once it arrives and isn't taxed when it comes in, which is true of inheritances; a home sale or settlement can owe tax.":""}${s.roth==="roth"?" Your Roth savings come out tax-free.":s.roth==="split"?" The Roth half of your savings comes out tax-free.":""}${(s.penCola==="no"&&n(s.pension)>0)||(c.partner&&s.pPenCola==="no"&&n(s.pPension)>0)?" A pension without cost-of-living raises is counted at 80% of today's amount, its average buying power over a 20-year retirement.":""}</p>
     </div></details>
   </div></details>`);
 
@@ -1479,7 +1493,7 @@ function aiFacts(s,c){
   me.push(`Cash in savings/checking: ${money(c.cash)}. Retirement account balance: ${money(n(s.rbal))}.`);
   if(s.plan==="yes"){
     const mt = (c.terms==="unsure"||(c.terms&&c.terms.guess))?"not sure what the match is (assuming 50% of the first 6%)":c.terms===null?"no employer match":`employer matches ${c.terms.pct}% of what I put in, up to ${c.terms.upto}% of pay`;
-    me.push(`Workplace plan: ${plan}, I put in ${c.pct}%${s.pctUnit==="dollar"?` (${money(n(s.pamt))} a paycheck)`:""} (${({pre:"pre-tax",roth:"Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
+    me.push(`Workplace plan: ${plan}, I put in ${c.pct}%${s.pctUnit==="dollar"?` (${money(n(s.pamt))} a paycheck)`:""} (${({pre:"pre-tax",roth:"Roth",split:"some pre-tax and some Roth",unsure:"not sure if Roth or pre-tax"})[s.roth]||"type not sure"}); ${mt}.`);
   } else me.push(s.plan==="no"?"Workplace retirement plan: none offered.":"Workplace retirement plan: not sure whether I have one or what's in it.");
   if(n(s.pension)>0) me.push(`Pension expected: about ${money(n(s.pension))}/month${s.penCola==="no"?", not adjusted for inflation":""}.`);
   me.push(`Years worked so far (for Social Security): ${n(s.years)}.`);
