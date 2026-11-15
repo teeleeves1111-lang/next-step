@@ -1146,6 +1146,30 @@ function render(){
     <ol class="steps">${steps.map(x=>`<li class="${x.status}"><span class="n">${x.status==="done"?"✓":x.n}</span><span class="t">${TITLES[x.id]}<small class="num">${esc(sub[x.id])}</small></span>${chip[x.status]}</li>`).join("")}</ol>
   </div></details>`);
 
+  // 403(b) in dollars
+  if(s.plan!=="no"){
+    const gp = grossPay(s), ppyC = n(s.freq)||26, age = n(s.age);
+    const pt = s.ptype==="401k"?"401(k)":"403(b)";
+    const perP = pct => gp*pct/100/ppyC;
+    const lim = RULES.fed.deferralLimit + catchUp(age);
+    const maxPct = gp>0 ? lim/gp*100 : 0;
+    const upto = c.terms && c.terms!=="unsure" ? c.terms.upto : null;
+    const rowsC = [];
+    if(c.pct>0) rowsC.push([`What you put in now (${c.pct}%)`, perP(c.pct)]);
+    if(upto && upto!==c.pct) rowsC.push([`${upto}%, the full match`, perP(upto)]);
+    [10,15].filter(x=>x<maxPct && x!==upto && x!==c.pct).forEach(x=>rowsC.push([`${x}%`, perP(x)]));
+    const catchNote = age>=60&&age<=63 ? `includes the ${money(RULES.fed.catchUp60)} catch-up for ages 60 to 63` : age>=50 ? `includes the ${money(RULES.fed.catchUp50)} catch-up from 50` : "";
+    h.push(`<details class="fold" data-fold="ct"><summary><span class="ft" id="h-ct">Your ${pt} in dollars</span><span class="fs">${upto?`${upto}% is ${money(perP(upto))} a paycheck`:`Percent of pay, per paycheck`}</span></summary><div class="fb">
+      ${gp>0 ? `<div class="rows">${rowsC.map(([l,v])=>`<div class="row"><span>${l}</span><span>${money(v)}</span></div>`).join("")}
+        <div class="row total"><span>The most you can put in${catchNote?`<small class="muted" style="display:block;font-weight:400">${catchNote}</small>`:""}</span><span>${money(lim/ppyC)}</span></div></div>
+      <p class="small muted">The most is ${money(lim)} a year, about ${Math.round(maxPct*10)/10}% of your base pay.${age<50?` From 50 it rises to ${money(RULES.fed.deferralLimit+RULES.fed.catchUp50)}, and to ${money(RULES.fed.deferralLimit+RULES.fed.catchUp60)} from 60 to 63.`:""}</p>
+      <label class="f">Try any percent<input id="ct-in" type="number" inputmode="decimal" min="0" max="100" step="0.5" placeholder="%"></label>
+      <div id="ct-out" class="money num" hidden></div>
+      <p class="small muted">Before tax, per paycheck, from base pay. Overtime and extra shifts usually count too, so a percent grows with them; a dollar amount doesn't. If you'll reach the most before December, ask HR whether the match keeps coming; if not, spread it evenly over the year.</p>`
+      : `<p class="small muted">Add your pay in My numbers to see this in dollars.</p>`}
+    </div></details>`);
+  }
+
   // costs you know are coming
   const bkPer = BUCKETS.reduce((a,[k])=>a+n((s.buckets||{})[k]),0)/(n(s.freq)||26);
   h.push(`<details class="fold" data-fold="bk"><summary><span class="ft" id="h-bk">Costs you know are coming</span><span class="fs"><span id="bk-sum">${bkPer>0?money(bkPer)+" a paycheck":"Not set up yet"}</span></span></summary><div class="fb">
@@ -1343,6 +1367,15 @@ function render(){
   document.querySelectorAll("#view-plan details.fold").forEach(d=>{ if(OPEN.has(d.dataset.fold)) d.open = true; d.addEventListener("toggle", ()=>{ d.open ? OPEN.add(d.dataset.fold) : OPEN.delete(d.dataset.fold); }); });
   const td = $("tax-done"); if(td) td.onclick = ()=>{ S.taxDone=true; S.example=false; save(); render(); window.scrollTo({top:0}); };
   document.querySelectorAll('[data-go="form"]').forEach(b=>b.onclick=()=>show("form"));
+  const ctIn = $("ct-in");
+  if(ctIn) ctIn.oninput = ()=>{
+    const gp = grossPay(S), ppyC = n(S.freq)||26, lim = RULES.fed.deferralLimit + catchUp(n(S.age));
+    const v = parseFloat(ctIn.value), out = $("ct-out");
+    if(!(v>0)){ out.hidden = true; return; }
+    const yr = gp*v/100;
+    out.hidden = false;
+    out.textContent = yr>lim ? `${v}% is more than the ${money(lim)} yearly limit. The most is ${money(lim/ppyC)} a paycheck.` : `${v}% is about ${money(yr/ppyC)} a paycheck, ${money(yr)} a year.`;
+  };
   bucketOut();
   try{ $("code-out").value = btoa(unescape(encodeURIComponent(JSON.stringify(S)))); }catch(e){}
 }
