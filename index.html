@@ -1343,12 +1343,12 @@ function render(){
 
   // help, and traps to avoid
   const trapsHtml = `<h3>Traps to avoid</h3><ul class="how">
-      <li><b>Payday and title loans.</b> Fees work out to hundreds of percent a year. Payday loans are illegal in New Jersey.</li>
-      <li><b>Borrowing from or cashing out your 403(b) or 401(k).</b> Cashing out costs taxes plus a 10% penalty, and a loan comes due fast if you leave your job.</li>
-      <li><b>Rent-to-own stores.</b> You often pay two or three times the price.</li>
-      <li><b>Refund-advance loans and paid preparers.</b> Free filing gets you the same refund.</li>
-      <li><b>Debt-settlement companies</b> that charge fees before settling anything. Use a nonprofit counselor instead.</li>
-      <li><b>"Advisors" selling annuities or whole life insurance</b> to people with small savings. The commissions are high and the money is hard to get out.</li>
+      <li><b>Paying only the card minimum.</b> On a few thousand dollars at 24%, it can take 15 years or more.</li>
+      <li><b>Buy now, pay later.</b> Feels free, but several at once are hard to track and late fees add up.</li>
+      <li><b>Long car loans.</b> At 72 months or more, you owe more than the car is worth for years.</li>
+      <li><b>Borrowing from or cashing out your ${s.ptype==="401k"?"401(k)":"403(b)"}.</b> A loan comes due fast if you leave your job; cashing out costs taxes plus a 10% penalty.</li>
+      <li><b>Whole life and annuity pitches.</b> High commissions, and the money is hard to get out. Term life and index funds cost far less.</li>
+      <li><b>Paid tax prep and refund advances.</b> Free filing gets you the same refund.</li>
     </ul>`;
 
   // help
