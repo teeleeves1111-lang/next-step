@@ -849,19 +849,20 @@ const TITLES = {number:"Know your number", cushion:"Starter cushion", match:"Get
   taxes:"Check your taxes", emergency:"Emergency savings", retire:"Save for retirement", goals:"Next goals"};
 
 function stepDetail(id, s, c){
+  const ppyD = n(s.freq)||26, pc = v => money(v*12/ppyD);
   const avail = Math.max(0,c.left);
   const planned = k => { if(!c.pp) return null; const a = c.pp.lines.filter(l=>l.id===k).reduce((x,l)=>x+l.a,0); return a*c.pp.ppy/12; };
   const forStep = k => { const p = planned(k); return (p==null ? avail : p) + Math.max(0,c.extraNet); };
   const withExtra = forStep(id);
-  const extraLine = c.extraNet>0 ? `Extra shifts add about ${money(c.extraNet)} a month after tax. Send that here too.` : null;
+  const extraLine = c.extraNet>0 ? `Extra shifts add about ${pc(c.extraNet)} a paycheck after tax. Send that here too.` : null;
   const L = [];
   switch(id){
   case "number": {
     const gap = -c.left;
     const refundLine = c.m.refund>=500 ? `You'll likely get about ${money(c.m.refund)} back when you file, mostly from credits for working families. Plan now to use it for a cushion and to pay down your highest-rate card, and file free (irs.gov/vita) so none of it goes to a preparer.` : null;
-    return { gap:true, h:`Close a gap of ${money(gap)} a month`, extra: refundLine,
-      why:`Your must-pay bills and debt minimums are ${money(gap)} a month more than your take-home pay. Closing this comes first, because every other step needs a little room each month.`,
-      money: c.extraNet>0 ? (c.extraNet>=gap ? `Your extra-shift money, about ${money(c.extraNet)} a month after tax, would cover it. Use it here until base pay and bills line up.` : `Extra shifts bring in about ${money(c.extraNet)} a month after tax. That covers part of the gap.`) : null,
+    return { gap:true, h:`Close a gap of ${pc(gap)} a paycheck`, extra: refundLine,
+      why:`Your must-pay bills and debt minimums are ${pc(gap)} a paycheck more than your take-home pay. Closing this comes first, because every other step needs a little room each payday.`,
+      money: c.extraNet>0 ? (c.extraNet>=gap ? `Your extra-shift money, about ${pc(c.extraNet)} a paycheck after tax, would cover it. Use it here until base pay and bills line up.` : `Extra shifts bring in about ${pc(c.extraNet)} a paycheck after tax. That covers part of the gap.`) : null,
       how:[
         "Call 211 or visit nj211.org. They connect New Jersey residents with help for rent, utilities, food and childcare.",
         "Ask your gas and electric company about New Jersey's Universal Service Fund and a payment plan.",
@@ -876,7 +877,7 @@ function stepDetail(id, s, c){
     return { h:`Save a starter cushion of ${money(t)}`,
       why: c.predatory.length ? `A first ${money(t)} keeps a surprise from sending you back to a payday lender. Then the next step is paying that loan off.` : `Enough that a flat tire or a short paycheck doesn't turn into an overdraft fee or a payday loan.`,
       progress:[c.cash,t],
-      money: withExtra>0 ? `Your payday plan puts about ${money(withExtra)} a month here, so you'll have it in ${duration(mo)}.` : `You need ${money(need)} more. Even $10 a paycheck counts.`,
+      money: withExtra>0 ? `Your payday plan puts about ${pc(withExtra)} a paycheck here, so you'll have it in ${duration(mo)}.` : `You need ${money(need)} more. Even $10 a paycheck counts.`,
       how:[
         "Open a savings account separate from checking, at a credit union or an online bank with no fees and no minimum balance.",
         "Set an automatic transfer for payday, even $20. Money you never see is easier to save.",
@@ -937,7 +938,7 @@ function stepDetail(id, s, c){
     return { h:`Pay off ${money(total)} of expensive debt`,
       why:`${list.length>1?"These debts charge":"This debt charges"} ${n(list[list.length-1].rate)===n(top.rate) ? n(top.rate)+"%" : n(list[list.length-1].rate)+"% to "+n(top.rate)+"%"} a year. Paying ${list.length>1?"them":"it"} off is a guaranteed return at that rate.`,
       list: list.map(d=>`${DEBT_TYPES[d.type]||"Debt"}: ${money(n(d.balance))} at ${n(d.rate)}%`),
-      money: mo ? `With about ${money(withExtra)} a month on top of minimums${c.pp?" from your payday plan":""}, they're gone in ${duration(mo)}.` : `At your current payments these won't shrink. Start with the credit counselor below.`,
+      money: mo ? `With about ${pc(withExtra)} a paycheck on top of minimums${c.pp?" from your payday plan":""}, they're gone in ${duration(mo)}.` : `At your current payments these won't shrink. Start with the credit counselor below.`,
       how};
   }
   case "taxes": {
@@ -972,7 +973,7 @@ function stepDetail(id, s, c){
     return { h:`Grow savings to ${money(t)}`,
       why:`${c.efMonths===2?"Two":"Three"} months of must-pay bills. That covers a job change, a medical leave or a big repair without new debt.${c.efMonths===2?" Two months is enough for a household with two steady incomes this close to retirement.":""}`,
       progress:[c.cash,t],
-      money: withExtra>0 ? `At ${money(withExtra)} a month, ${duration(mo)}.${c.pp && c.pp.lines.some(l=>l.id==="retire") ? ` Your payday plan also adds to your ${s.ptype==="401k"?"401(k)":"403(b)"} at the same time, because retirement saving can't wait at your age.` : " Keep saving for retirement at your current rate meanwhile."}` : null,
+      money: withExtra>0 ? `At ${pc(withExtra)} a paycheck, ${duration(mo)}.${c.pp && c.pp.lines.some(l=>l.id==="retire") ? ` Your payday plan also adds to your ${s.ptype==="401k"?"401(k)":"403(b)"} at the same time, because retirement saving can't wait at your age.` : " Keep saving for retirement at your current rate meanwhile."}` : null,
       how:[
         c.cash<first ? `First milestone: about ${money(first)}. That covers the biggest surprise most households face in a year: a car repair, a home repair or a health plan deductible. If your deductible is higher, aim for that.` : null,
         "Keep it in a separate savings account with named buckets, so it doesn't blend into spending.",
@@ -1076,23 +1077,25 @@ function render(){
   const d = stepDetail(cur.id, s, c);
   const next = steps.slice(steps.indexOf(cur)+1).find(x=>x.status!=="done" && x.status!=="skip");
   const h = [];
+  const ppyT = n(s.freq)||26, pc = v => money(v*12/ppyT);
   if(s.example) h.push(`<div class="banner"><span><b>These are example numbers</b> for a mid-career nurse, married with two kids. Put in your own to see your plan.</span><button class="btn small primary" type="button" data-go="form">Use my numbers</button></div>`);
 
-  // this month
+  const h0 = h.length;
+  // each paycheck
   const neg = c.left<0;
-  h.push(`<section aria-labelledby="h-month"><div class="eyebrow" id="h-month">This month</div>
-    <div class="big num ${neg?"neg":"pos"}">${neg? money(-c.left)+" short" : money(c.left)+" left"}</div>
+  h.push(`<section aria-labelledby="h-month"><div class="eyebrow" id="h-month">Each paycheck</div>
+    <div class="big num ${neg?"neg":"pos"}">${neg? pc(-c.left)+" short" : pc(c.left)+" left"}</div>
     <p class="muted">${neg? "Must-pay bills are more than take-home pay." : (c.oi>0 ? "After must-pay bills and debt minimums, from base pay and other money coming in." : "After must-pay bills and debt minimums, from base pay only.")}</p>
     <div class="rows">
-      <div class="row"><span>Take-home pay${c.estimated?" (estimated)":""}</span><span>${money(c.take)}</span></div>
-      ${c.oi>0?`<div class="row"><span>Other money coming in</span><span>+${money(c.oi)}</span></div>`:""}
-      <div class="row"><span>Must-pay bills</span><span>−${money(c.bills)}</span></div>
-      ${c.mins>0?`<div class="row"><span>Debt minimums</span><span>−${money(c.mins)}</span></div>`:""}
-      <div class="row total"><span>${neg?"Gap":"Left for your step"}</span><span>${money(c.left)}</span></div>
-      ${c.extraNet>0?`<div class="row"><span class="muted">Extra shifts, after tax (not counted above)</span><span class="muted">+${money(c.extraNet)}</span></div>`:""}
+      <div class="row"><span>Take-home pay${c.estimated?" (estimated)":""}</span><span>${pc(c.take)}</span></div>
+      ${c.oi>0?`<div class="row"><span>Other money coming in</span><span>+${pc(c.oi)}</span></div>`:""}
+      <div class="row"><span>Must-pay bills</span><span>−${pc(c.bills)}</span></div>
+      ${c.mins>0?`<div class="row"><span>Debt minimums</span><span>−${pc(c.mins)}</span></div>`:""}
+      <div class="row total"><span>${neg?"Gap":"Left after bills"}</span><span>${pc(c.left)}</span></div>
+      ${c.extraNet>0?`<div class="row"><span class="muted">Extra shifts, after tax (not counted above)</span><span class="muted">+${pc(c.extraNet)}</span></div>`:""}
     </div>
     ${c.estimated?`<p class="small muted">Take-home is estimated${c.m.prem>0?"":" and doesn't include health premiums"}. For a better number, add your real paycheck amount in My numbers.</p>`:""}
-    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${money(c.actualSave)} a month, but ${money(c.left)} is left after bills.</b> The difference gets spent. The payday plan below moves money first, before it can be.</p></div>` : ""}
+    ${(!neg && c.saveKnown && c.actualSave < c.left-50) ? `<div class="callout"><p><b>Your savings grow about ${pc(c.actualSave)} a paycheck, but ${pc(c.left)} is left after bills.</b> The difference gets spent. The payday plan below moves money first, before it can be.</p></div>` : ""}
     ${(!neg && !c.saveKnown) ? `<p class="small muted">How much does your savings actually grow each month? Add it in My numbers. It's the best check on whether this money is really available.</p>` : ""}
   </section>`);
 
@@ -1107,6 +1110,7 @@ function render(){
     </section>`);
   }
 
+  const pre = h.splice(h0);
   // current step
   const prog = d.progress ? `<div><div class="bar" role="progressbar" aria-valuemin="0" aria-valuemax="${Math.round(d.progress[1])}" aria-valuenow="${Math.round(d.progress[0])}"><i style="width:${Math.min(100, d.progress[1]>0? d.progress[0]/d.progress[1]*100 : 0)}%"></i></div><p class="small muted num" style="margin-top:4px">${money(d.progress[0])} of ${money(d.progress[1])}</p></div>` : "";
   h.push(`<section aria-labelledby="h-step"><div class="eyebrow" id="h-step-l">Your step</div>
@@ -1124,19 +1128,20 @@ function render(){
     ${next?`<p class="after">After this: <b>Step ${next.n}, ${TITLES[next.id]}</b></p>`:""}
   </section>`);
 
+  h.push(...pre);
   // progress
   h.push(`<div class="folds">`);
   const sub = {
-    number: neg? `${money(-c.left)} a month short` : `${money(c.left)} a month to work with`,
+    number: neg? `${pc(-c.left)} a paycheck short` : `${pc(c.left)} a paycheck to work with`,
     cushion: `${money(Math.min(c.cash,c.cushionTarget))} of ${money(c.cushionTarget)}`,
     match: c.terms===null ? (s.plan==="no"?"No plan at work":"No match offered") : c.terms==="unsure" ? "Match not known yet" : `${c.pct}% of ${c.terms.upto}% needed${c.terms.guess?" (match assumed)":""}`,
     debt: c.expensive.length ? `${money(c.expensive.reduce((a,x)=>a+n(x.balance),0))} at 10% or more` : "None at 10% or more",
     taxes: s.taxDone ? "Checked" : "Credits, W-4, free filing",
-    emergency: `${c.efTarget>0?(Math.round(c.cash/(c.efTarget/c.efMonths)*10)/10):0} of ${c.efMonths} months`,
+    emergency: (()=>{ const m = c.efTarget>0 ? c.cash/(c.efTarget/c.efMonths) : 0; return (m<1 ? plural(Math.round(m*52/12),"week") : `${Math.round(m*10)/10} months`) + ` of ${c.efMonths} months saved`; })(),
     retire: `${Math.round(c.totalRate*10)/10}% of pay, with match`,
     goals: "Car, home, education"
   };
-  const chip = {done:'<span class="chip done">Done</span>', now:'<span class="chip now">Now</span>', todo:'<span class="chip">Later</span>', skip:'<span class="chip skip">Not needed</span>'};
+  const chip = {done:'<span class="chip done">Done</span>', now:'<span class="chip now">Now</span>', todo:'<span class="chip">Later</span>', skip:'<span class="chip skip">Doesn\'t apply</span>'};
   h.push(`<details class="fold" data-fold="prog"><summary><span class="ft" id="h-prog">Your progress</span><span class="fs">Step ${cur.n} of ${steps.length}: ${TITLES[cur.id]}</span></summary><div class="fb">
     <ol class="steps">${steps.map(x=>`<li class="${x.status}"><span class="n">${x.status==="done"?"✓":x.n}</span><span class="t">${TITLES[x.id]}<small class="num">${esc(sub[x.id])}</small></span>${chip[x.status]}</li>`).join("")}</ol>
   </div></details>`);
@@ -1256,19 +1261,19 @@ function render(){
   const kidsN = n(s.kids), oldest = n(s.kidOldest);
   const deps = c.married || kidsN>0;
   const also = [];
-  if(deps && n(s.age)>=50 && !(n(s.kids)>0)) also.push(`<b>Life insurance.</b> With grown children, you may need less than you think: enough to pay off the mortgage and cover what your ${c.married?"spouse":"partner"} would lose if your income stopped, until Social Security and savings take over. Check what your job provides first; a 10-year level term policy covers any gap. Skip whole life.`);
-  else if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, a common starting point is coverage of about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give you one or two times pay for free; a 20-year level term policy covers the rest, often for $30 to $60 a month at mid-life. Skip whole life.`);
-  also.push(`<b>Disability insurance.</b> Your ability to work is worth more than anything you own, but you probably don't need to buy your own policy. New Jersey's Temporary Disability Insurance, which comes out of every paycheck, covers up to 26 weeks. For longer, sign up for your job's long-term disability plan at open enrollment if it's optional; it's usually free or cheap. Skip expensive individual policies.`);
+  if(deps && n(s.age)>=50 && !(n(s.kids)>0)) also.push(`<b>Life insurance.</b> With grown children you may need less: enough to pay off the mortgage and replace your income until Social Security and savings take over. Check what your job gives you first. Skip whole life.`);
+  else if(deps) also.push(`<b>Term life insurance.</b> If someone depends on your paycheck, aim for about 10 times your pay, around <span class="num">${money(Math.round(c.m.base*10/50000)*50000)}</span>. Your job may give one or two times pay free; a 20-year term policy covers the rest. Skip whole life.`);
+  also.push(`<b>Disability insurance.</b> New Jersey's disability insurance, taken from every paycheck, covers up to 26 weeks. For longer, sign up for your job's long-term disability plan if it's optional. Skip expensive individual policies.`);
   if(kidsN>0 && s.kidOldest!=="" && s.kidOldest!=null){
     const yrs = Math.max(0, 18-oldest);
-    also.push(`<b>College${yrs>0?`, in about ${plural(yrs,"year")}`:""}.</b> Open an NJBEST 529 plan and set up a small automatic deposit. File the FAFSA every year starting senior year of high school; New Jersey's Tuition Aid Grant and community college grants depend on it. Keep saving for retirement first. Loans exist for college, not for retirement.`);
+    also.push(`<b>College${yrs>0?`, in about ${plural(yrs,"year")}`:""}.</b> Open an NJBEST 529 plan with a small automatic deposit, and file the FAFSA every year from senior year; New Jersey's grants depend on it. Retirement still comes first: loans exist for college, not for retirement.`);
   }
-  if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more (2026 limits). If your pay last year, counting overtime and differentials, was over $150,000, the extra has to go in as Roth. Useful once the earlier steps are done.`);
+  if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more. If last year's pay was over $150,000, the extra goes in as Roth. Useful once the earlier steps are done.`);
   if(n(s.endCosts)>0) also.push(`<b>When college or other costs end.</b> That frees about <span class="num">${money(n(s.endCosts))}</span> a month. Send it straight to savings the month it ends${n(s.age)>=50?`: half to your ${s.ptype==="401k"?"401(k)":"403(b)"}, where you can put in more from 50 and much more from 60 to 63, and half to emergency savings until that's done`:""}, before it gets absorbed into spending.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
-  also.push(`<b>Beneficiaries and a will.</b> Your ${s.ptype==="401k"?"401(k)":"403(b)"} and life insurance go to whoever is named on the account, not whoever is in your will. Log in and check the names, especially after a marriage, divorce or new baby. A simple will, a power of attorney and a health care proxy cover the rest; a New Jersey attorney often does all three for a flat fee.`);
-  also.push(`<b>A health savings account (HSA), if your job offers one.</b> Many hospitals don't. If yours offers a high-deductible health plan with an HSA, it's the best tax deal there is: no tax going in, while it grows, or coming out for medical bills, and it stays yours if you leave. If you can, pay small bills out of pocket and let it grow for health costs in retirement.`);
-  if(n(s.age)>=55) also.push(`<b>Getting close: Social Security and Medicare.</b> You can stop working before you claim Social Security; each year you wait past 62, up to 70, raises the check for life. ${c.married?"If you're married, the bigger earner waiting matters most, because the larger check is the one a surviving spouse keeps. ":""}Sign up for Medicare in the 3 months before you turn 65 unless you're still covered by a job; signing up late can mean a lifelong penalty. Check your real estimate at ssa.gov/myaccount.`);
+  also.push(`<b>Beneficiaries and a will.</b> Your ${s.ptype==="401k"?"401(k)":"403(b)"} and life insurance go to whoever is named on the account, not your will, so check the names after a marriage, divorce or new baby. A New Jersey attorney can do a will, power of attorney and health care proxy for a flat fee.`);
+  also.push(`<b>A health savings account (HSA), if your job offers one.</b> It comes with a high-deductible health plan and is the best tax deal there is: no tax going in, while it grows, or coming out for medical bills.`);
+  if(n(s.age)>=55) also.push(`<b>Getting close: Social Security and Medicare.</b> Each year you wait to claim Social Security, from 62 up to 70, raises the check for life${c.married?"; the bigger earner's check is the one a surviving spouse keeps":""}. Sign up for Medicare in the 3 months before 65 unless a job still covers you, or you may pay a lifelong penalty.`);
 
 
   // choosing investments
@@ -1277,11 +1282,11 @@ function render(){
   h.push(`<details class="fold" data-fold="inv"><summary><span class="ft" id="h-inv">Choosing investments</span><span class="fs">Low-cost funds, one pot</span></summary><div class="fb">
     <p>General guidance, not a pick for your plan. Every employer's fund list is different.</p>
     <ul class="plain">
-      <li><b>Treat all your retirement accounts as one pot.</b> Your work plan, any IRA, and a spouse's accounts add up to one mix of stocks and bonds. Decide the mix for the whole pot, not account by account.</li>
+      <li><b>Treat all your retirement accounts as one pot,</b> including a spouse's. Decide the mix of stocks and bonds for the whole pot.</li>
       <li><b>The simple choice:</b> one target-date <i>index</i> fund in each account, with the year closest to when you'll retire, around <span class="num">${tdYear}</span> for you. It holds stocks and bonds and gets safer as you get older.</li>
-      <li><b>Check the cost.</b> Look for the "expense ratio." Under about 0.25% a year is good; broad index funds often cost 0.02% to 0.15%. On <span class="num">$100,000</span>, a 0.75% fund costs about <span class="num">$700</span> a year more than a 0.05% one. Read names closely: Fidelity "Freedom Index" funds cost about 0.12%, plain "Freedom" funds about 0.65% or more.</li>
-      <li><b>If your work plan's target-date funds are expensive,</b> use its cheapest broad stock index fund there, such as an S&amp;P 500 fund, and balance the pot with a bond or target-date index fund in an IRA. Ten years from retirement, target-date funds hold roughly 50% to 60% stocks; an all-S&amp;P 500 account is 100%.${hasPension?" A pension works a lot like a bond, so with one coming you can reasonably hold more stock.":""}</li>
-      <li><b>Be careful with annuity options</b> and "guaranteed" accounts inside a 403(b). Fees are often high and money can be hard to move. Don't switch because a salesperson suggests it.</li>
+      <li><b>Check the cost,</b> called the "expense ratio." Under 0.25% a year is good. On <span class="num">$100,000</span>, a 0.75% fund costs about <span class="num">$700</span> a year more than a 0.05% one. Read names closely: Fidelity "Freedom Index" funds cost about 0.12%, plain "Freedom" funds about 0.65%.</li>
+      <li><b>If your plan's target-date funds are expensive,</b> ask the plan's representative to help you build the same mix from its cheapest index funds.${hasPension?" A pension works a lot like a bond, so with one coming you can reasonably hold more stock.":""}</li>
+      <li><b>Be careful with annuities</b> and "guaranteed" accounts inside a 403(b). Fees are often high and money is hard to move.</li>
       <li><b>Look once a year,</b> rebalance if your mix has drifted, and don't change course because of the news.</li>
     </ul></div></details>`);
 
@@ -1293,8 +1298,8 @@ function render(){
   if(c.m.njCtc>0) table.push(`New Jersey Child Tax Credit for children under 6: about <b class="num">${money(c.m.njCtc)}</b>.`);
   if(c.m.sRate>0 && c.m.contrib<2000) table.push(`Saver's Credit: your income qualifies for ${Math.round(c.m.sRate*100)}% back on up to $2,000 saved for retirement, limited by the tax you owe.`);
   const kidsU13 = n(s.kids)>0 && (n(s.kids6)>0 || (s.kidOldest!=="" && s.kidOldest!=null && n(s.kidOldest)<13));
-  if(kidsU13) table.push(`Child and Dependent Care Credit: if you pay for daycare or after-school care for children under 13, the federal credit covers 20% to 50% of up to <b class="num">$3,000</b> of costs for one child or <b class="num">$6,000</b> for two or more, and New Jersey adds its own credit for incomes up to $150,000. A free VITA preparer can claim it.`);
-  if((s.debts||[]).some(d=>d.type==="student" && n(d.balance)>0)) table.push(`Student loan forgiveness: most hospitals are nonprofits, so federal student loans can qualify for Public Service Loan Forgiveness. Whatever is left is forgiven after 120 qualifying payments on an income-based plan while you work full time there. Check with the PSLF Help Tool at studentaid.gov. If you're on track for it, don't pay extra on those loans; put the money toward your other steps.`);
+  if(kidsU13) table.push(`Child and Dependent Care Credit for daycare or after-school care under 13: the federal credit covers 20% to 50% of up to <b class="num">$3,000</b> (one child) or <b class="num">$6,000</b> (two or more), and New Jersey adds its own. A free VITA preparer can claim it.`);
+  if((s.debts||[]).some(d=>d.type==="student" && n(d.balance)>0)) table.push(`Student loan forgiveness: at a nonprofit hospital, federal student loans can be forgiven after 120 qualifying payments (Public Service Loan Forgiveness). Check the PSLF Help Tool at studentaid.gov. If you're on track, don't pay extra on those loans.`);
   if(n(s.kids6)>0) table.push(`Dependent care FSA: pay up to <b class="num">${money(RULES.fed.dcfsa)}</b> a year of childcare before federal tax (new 2026 limit). The same dollars can't count for both the FSA and the credit; a VITA preparer or HR can tell you which saves more.`);
   const hhInc = c.m.wages;
   const tiers = RULES.nj.anchor[s.housing==="own"?"own":"rent"];
@@ -1316,28 +1321,20 @@ function render(){
     </ul>`;
 
   // help
-  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help, and traps to avoid</span><span class="fs">Tax help, 211, credit counseling, good books</span></summary><div class="fb"><div class="links">
+  h.push(`<details class="fold" data-fold="help"><summary><span class="ft" id="h-help">Free help, and traps to avoid</span><span class="fs">Tax help, 211, credit counseling, a good book</span></summary><div class="fb"><div class="links">
     <a href="https://www.irs.gov/individuals/free-tax-return-preparation-for-qualifying-taxpayers" target="_blank" rel="noopener">Free tax preparation (IRS VITA)<small>Volunteers file your return at no cost</small></a>
     <a href="https://www.nj211.org" target="_blank" rel="noopener">NJ 211<small>Help with rent, utilities, food and childcare. Or dial 211.</small></a>
     <a href="https://www.nfcc.org" target="_blank" rel="noopener">Nonprofit credit counseling (NFCC)<small>Lower rates and a payoff plan, no new loan</small></a>
-    <a href="https://www.consumerfinance.gov" target="_blank" rel="noopener">Consumer Financial Protection Bureau<small>Free tools and a place to file complaints</small></a>
     <a href="https://www.ssa.gov/myaccount/" target="_blank" rel="noopener">Your Social Security estimate<small>Your real number, from your real earnings</small></a>
+    <a href="https://brokercheck.finra.org" target="_blank" rel="noopener">FINRA BrokerCheck<small>Look up any "advisor" before you trust them with money</small></a>
   </div><p class="small muted">Your hospital's retirement-plan representative can also walk you through your account at no cost.</p>
     ${trapsHtml}
     <h3>Worth reading</h3>
-    <p class="small muted">Free or library-friendly, and none of them sell anything. Your library card gets most books free on the Libby app.</p>
-    <ul class="plain">
-      <li><b>The Index Card</b> by Helaine Olen and Harold Pollack. Personal finance on one index card. The best short start.</li>
-      <li><b>The Psychology of Money</b> by Morgan Housel. Why money decisions are about behavior, not math. Easy chapters.</li>
-      <li><b>The Simple Path to Wealth</b> by JL Collins. Low-cost index funds explained plainly.</li>
-    </ul>
-    <div class="links">
-      <a href="https://www.investor.gov" target="_blank" rel="noopener">Investor.gov (SEC)<small>Investing basics and a compound interest calculator</small></a>
-      <a href="https://www.bogleheads.org/wiki/Getting_started" target="_blank" rel="noopener">Bogleheads: Getting started<small>Free, plain guide to saving and low-cost investing</small></a>
-      <a href="https://www.ssa.gov/benefits/retirement/" target="_blank" rel="noopener">Social Security: retirement benefits<small>When to claim and how your age changes the check</small></a>
-      <a href="https://brokercheck.finra.org" target="_blank" rel="noopener">FINRA BrokerCheck<small>Look up any "advisor" before you trust them with money</small></a>
-      <a href="https://studentaid.gov/manage-loans/forgiveness-cancellation/public-service" target="_blank" rel="noopener">Public Service Loan Forgiveness<small>For federal student loans while you work at a nonprofit hospital</small></a>
-      <a href="https://nj.gov/getcoverednj/" target="_blank" rel="noopener">Get Covered New Jersey<small>Health insurance if you retire before Medicare at 65</small></a>
+    <p><b>The Index Card</b> by Helaine Olen and Harold Pollack. Personal finance on one index card; free with a library card on the Libby app.</p>
+    ${(s.debts||[]).some(d=>d.type==="student" && n(d.balance)>0) || n(s.age)>=55 ? `<div class="links">
+      ${(s.debts||[]).some(d=>d.type==="student" && n(d.balance)>0) ? `<a href="https://studentaid.gov/manage-loans/forgiveness-cancellation/public-service" target="_blank" rel="noopener">Public Service Loan Forgiveness<small>For federal student loans while you work at a nonprofit hospital</small></a>` : ""}
+      ${n(s.age)>=55 ? `<a href="https://nj.gov/getcoverednj/" target="_blank" rel="noopener">Get Covered New Jersey<small>Health insurance if you retire before Medicare at 65</small></a>` : ""}
+    </div>` : ""}
     </div></div></details>`);
   h.push(`</div>`);
 
