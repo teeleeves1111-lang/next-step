@@ -274,6 +274,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
           <label><input type="radio" name="housing" value="own" id="housing-own"><span>I own</span></label>
         </div>
         <label class="f"><span id="rent-label">Rent</span><input id="rent" type="number" inputmode="decimal" min="0"></label>
+        <label class="f" id="wrap-mortyrs">Years left on your mortgage<small>Leave blank if it's paid off or you're not sure.</small><input id="mortYrs" type="number" inputmode="numeric" min="0" max="40"></label>
         <label class="f">Car payment<input id="car" type="number" inputmode="decimal" min="0"></label>
         <label class="f">Everything else you must pay<small>Utilities, phone, food, gas, insurance, childcare. Not debts; those come next.</small><input id="other" type="number" inputmode="decimal" min="0"></label>
       </fieldset>
@@ -385,8 +386,7 @@ details.aiset summary{font-weight:700;cursor:pointer}
           <fieldset>
             <legend>Spending in retirement</legend>
             <p class="muted small">We start from what you spend today, then take out payments gone by 67.</p>
-            <label class="chk" id="wrap-mortoff"><input type="checkbox" id="mortgageOff"><span>Mortgage paid off by then</span></label>
-            <label class="f" id="wrap-owncarry">Of your housing payment, property tax and home insurance<small>These keep going after the mortgage is paid off. Blank: we use a third of the payment.</small><input id="ownCarry" type="number" inputmode="decimal" min="0"></label>
+            <label class="f" id="wrap-owncarry">Of your housing payment, property tax and home insurance<small>These keep going after the mortgage ends. Blank: we use a third of the payment.</small><input id="ownCarry" type="number" inputmode="decimal" min="0"></label>
             <label class="chk"><input type="checkbox" id="carOff"><span>No car payment by then</span></label>
             <label class="f">Costs that will end before you retire, per month<small>College, child care, help for grown kids. They're in what you spend now but won't be then.</small><input id="endCosts" type="number" inputmode="decimal" min="0"></label>
             <label class="f">Or your own monthly number, in today's dollars<input id="spend" type="number" inputmode="decimal" min="0"></label>
@@ -463,7 +463,7 @@ const RULES = {
 
 /* ===== state ===== */
 const EXAMPLE = {
-  example:true, age:46, filing:"mfj", kids:2, kids6:0, kidOldest:15, spouse:48000, prem:165, housing:"own", actualSave:400, mortgageOff:true, carOff:true,
+  example:true, age:46, filing:"mfj", kids:2, kids6:0, kidOldest:15, spouse:48000, prem:165, housing:"own", mortYrs:14, actualSave:400, mortgageOff:true, carOff:true,
   buckets:{repairs:1500, gifts:1200, vacation:3000, car:0, yearly:0},
   payMode:"hourly", hourly:54, hours:36, salary:0, freq:26, takehome:"", extra:600,
   plan:"yes", ptype:"403b", pctUnit:"dollar", pamt:155, pct:4, roth:"pre", match:"50-6", mpct:50, mupto:6, vest:"3",
@@ -653,9 +653,10 @@ function retireAt(s, c, R, addPct=0){
   const ages = c.partner ? [R, pa] : [R];
   const health = ages.reduce((a,x)=>a + (x<65 ? RULES.health.pre65 : RULES.health.medicare), 0);
   const pre65 = ages.some(x=>x<65);
-  const need = c.need + health;
+  const mortAdd = !c.spendEntered && c.mortPay>0 && R < c.mortEnd ? c.mortPay : 0;   // mortgage still running at R
+  const need = c.need + health + mortAdd;
   const net = gross - tax;
-  return {R, pa, gross, tax, net, need, health, pre65, short: Math.max(0, need-net), covered: net>=need,
+  return {R, pa, gross, tax, net, need, health, pre65, mortAdd, short: Math.max(0, need-net), covered: net>=need,
           ssOwn, ssP, sav, psav, pen, ppen, lump, oth};
 }
 function retirePlan(s, c){
@@ -804,7 +805,9 @@ function compute(s){
   const spendNow = take + oi - (saveKnown ? actualSave : 0);
   const ownCarryKnown = n(s.ownCarry)>0;
   const ownCarry = s.housing==="own" ? (ownCarryKnown ? Math.min(n(s.rent), n(s.ownCarry)) : n(s.rent)/3) : 0;   // property tax + insurance stay
-  const dropMort = s.housing==="own" && s.mortgageOff!==false ? n(s.rent) - ownCarry : 0;
+  const mortPay = s.housing==="own" ? n(s.rent) - ownCarry : 0;
+  const mortEnd = n(s.mortYrs)>0 ? n(s.age) + n(s.mortYrs) : (s.mortgageOff===false ? Infinity : 0);   // blank: assume paid off by retirement
+  const dropMort = mortPay;
   const dropCar = s.carOff!==false ? n(s.car) : 0;
   const dropEnd = n(s.endCosts);
   const dropOi = oi - oiR;   // money that stops before retirement: so does what it pays for
@@ -823,7 +826,7 @@ function compute(s){
   return {m,take,estimated,bills,debts,mins,left,extraNet,terms,pct,matchNow,matchFull,matchRate,totalRate,
           preSaves,testPct,predatory,expensive,cushionTarget,efTarget,efMonths,late,cash,pia:ownSS,savMonthly,savPlus1,yrsLeft,
           partner,married,p,pension,retIncome,retTax,retNet,need,spendEntered,short,morePct,perPct,perPctNet,
-          saveKnown,actualSave,spendNow,dropMort,dropCar,dropEnd,needAuto,pPIA,ownCarry,ownCarryKnown,myNeed,pNeed,pSpendKnown,oi,lumpMonthly,oiR};
+          saveKnown,actualSave,spendNow,dropMort,mortPay,mortEnd,dropCar,dropEnd,needAuto,pPIA,ownCarry,ownCarryKnown,myNeed,pNeed,pSpendKnown,oi,lumpMonthly,oiR};
 }
 
 /* ===== steps ===== */
@@ -1238,7 +1241,7 @@ function render(){
   else verdict = `<p>At ${ra.R}, ${who} would spend about <b class="num">${money(ra.need)} a month</b>, so ${who} would be about <b class="num">${money(ra.short)} a month short</b>.</p>`;
   const spendRows = (c.spendEntered ? `<div class="rows small"><div class="row"><span>The number you entered</span><span>${money(c.myNeed)}</span></div>` : `<div class="rows small">
       <div class="row"><span>What you spend today${c.saveKnown?"":" (assumes nothing is saved)"}</span><span>${money(c.spendNow)}</span></div>
-      ${c.dropMort>0?`<div class="row"><span>Mortgage paid off (property tax and insurance of ${money(c.ownCarry)}${c.ownCarryKnown?"":", estimated,"} stay)</span><span>−${money(c.dropMort)}</span></div>`:""}
+      ${c.dropMort>0 && !ra.mortAdd?`<div class="row"><span>Mortgage paid off (property tax and insurance of ${money(c.ownCarry)}${c.ownCarryKnown?"":", estimated,"} stay)</span><span>−${money(c.dropMort)}</span></div>`:""}
       ${c.dropCar>0?`<div class="row"><span>No car payment</span><span>−${money(c.dropCar)}</span></div>`:""}
       ${c.mins>0?`<div class="row"><span>Debts paid off</span><span>−${money(c.mins)}</span></div>`:""}
       ${c.dropEnd>0?`<div class="row"><span>College and other costs ended</span><span>−${money(c.dropEnd)}</span></div>`:""}
@@ -1295,6 +1298,10 @@ function render(){
   if(n(s.age)>=45 && s.plan==="yes") also.push(`<b>Catch-up contributions${n(s.age)>=50?"":" at 50"}.</b> From age 50 you can put up to <span class="num">${money(RULES.fed.catchUp50)}</span> a year more into your ${s.ptype==="401k"?"401(k)":"403(b)"}, and from 60 to 63 up to <span class="num">${money(RULES.fed.catchUp60)}</span> more. If last year's pay was over $150,000, the extra goes in as Roth. Useful once the earlier steps are done.`);
   if(n(s.endCosts)>0) also.push(`<b>When college or other costs end.</b> That frees about <span class="num">${money(n(s.endCosts))}</span> a month. Send it straight to savings the month it ends${n(s.age)>=50?`: half to your ${s.ptype==="401k"?"401(k)":"403(b)"}, where you can put in more from 50 and much more from 60 to 63, and half to emergency savings until that's done`:""}, before it gets absorbed into spending.`);
   if(c.partner && !(n(s.pSaveYear)>0)) also.push(`<b>Your ${c.married?"spouse's":"partner's"} match.</b> If their job has a retirement plan with a match, make sure they're getting all of it.`);
+  if(c.mortPay>0){
+    const endAge = isFinite(c.mortEnd) && c.mortEnd>0 ? Math.round(c.mortEnd) : null;
+    also.push(`<b>Paying extra on your mortgage?</b> Do it only after your plan's steps and about 15% of pay going to retirement. Under about 5% interest, investing usually comes out ahead. ${endAge && endAge>67 ? `Yours runs to about age ${endAge}, so a plan to finish it by retirement is worth having: it lowers what you need to live on.` : `Being paid off by retirement lowers what you need to live on.`}`);
+  }
   also.push(`<b>Beneficiaries and a will.</b> Your ${s.ptype==="401k"?"401(k)":"403(b)"} and life insurance go to whoever is named on the account, not your will, so check the names after a marriage, divorce or new baby. A New Jersey attorney can do a will, power of attorney and health care proxy for a flat fee.`);
   also.push(`<b>A health savings account (HSA), if your job offers one.</b> It comes with a high-deductible health plan and is the best tax deal there is: no tax going in, while it grows, or coming out for medical bills.`);
   if(n(s.age)>=55) also.push(`<b>Getting close: Social Security and Medicare.</b> Each year you wait to claim Social Security, from 62 up to 70, raises the check for life${c.married?"; the bigger earner's check is the one a surviving spouse keeps":""}. Sign up for Medicare in the 3 months before 65 unless a job still covers you, or you may pay a lifelong penalty.`);
@@ -1381,9 +1388,9 @@ function render(){
 }
 
 /* ===== form binding ===== */
-const FIELDS = ["oiAmt","oiEnd","lumpAmt","lumpYr","ptOn","ptYr","ptLen","ptShare","ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pctUnit","pamt","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
+const FIELDS = ["mortYrs","oiAmt","oiEnd","lumpAmt","lumpYr","ptOn","ptYr","ptLen","ptShare","ownCarry","pSpend","endCosts","spouseTake","penCola","pPenCola","kidOldest","prem","actualSave","pension","pAge","pPay","pSavings","pSaveYear","pPension","pSS","spend","age","kids","kids6","spouse","hourly","hours","salary","freq","takehome","extra","ptype","pctUnit","pamt","pct","roth","match","mpct","mupto","vest","rent","car","other","cash","rbal","years"];
 const RADIOS = ["filing","payMode","plan","hasPartner","housing"];
-const CHECKS = ["mortgageOff","carOff"];
+const CHECKS = ["carOff"];
 function fillForm(){
   FIELDS.forEach(k=>{ const el=$(k); if(el) el.value = S[k]===undefined||S[k]===null ? "" : S[k]; });
   RADIOS.forEach(k=>{ document.querySelectorAll(`input[name="${k}"]`).forEach(r=>r.checked = r.value===S[k]); });
@@ -1394,8 +1401,8 @@ function toggles(){
   $("fs-kids").hidden = !(n(S.kids)>0);
   $("wrap-spousetake").hidden = S.filing!=="mfj";
   $("fs-plan").hidden = S.plan!=="yes";
-  $("wrap-mortoff").hidden = S.housing!=="own";
-  $("wrap-owncarry").hidden = S.housing!=="own" || S.mortgageOff===false;
+  $("wrap-mortyrs").hidden = S.housing!=="own";
+  $("wrap-owncarry").hidden = S.housing!=="own";
   $("rent-label").textContent = S.housing==="own" ? "Mortgage, property tax and insurance" : "Rent";
   $("wrap-spouse").hidden = S.filing!=="mfj";
   $("wrap-hourly").hidden = S.payMode!=="hourly";
@@ -1517,7 +1524,7 @@ function aiFacts(s,c){
   me.push(`I work at a hospital in New Jersey. Pay: ${s.payMode==="hourly"?`${money(n(s.hourly))}/hour × ${n(s.hours)} hours a week (about ${money(grossPay(s))} a year)`:`${money(n(s.salary))} a year salary`}, paid ${({52:"weekly",26:"every two weeks",24:"twice a month",12:"monthly"})[n(s.freq)||26]||"every two weeks"}.${n(s.extra)>0?` Extra shifts: about ${money(n(s.extra))} a month before tax (not guaranteed).`:""}`);
   if(n(s.oiAmt)>0) me.push(`Other money coming in (child support, alimony, rent or similar): about ${money(n(s.oiAmt))}/month after costs and taxes, ${s.oiEnd===""||s.oiEnd==null?"continuing into retirement":`stopping in about ${n(s.oiEnd)} years`}.`);
   if(n(s.lumpAmt)>0) me.push(`One-time money expected (inheritance, home sale or similar): about ${money(n(s.lumpAmt))} in about ${n(s.lumpYr)} years. Not guaranteed.`);
-  me.push(`Housing: ${s.housing==="own"?"own, mortgage":"rent"} ${money(n(s.rent))}/month. Car payment ${money(n(s.car))}/month. Other must-pay bills ${money(n(s.other))}/month.`);
+  me.push(`Housing: ${s.housing==="own"?"own, mortgage":"rent"} ${money(n(s.rent))}/month${s.housing==="own"&&n(s.mortYrs)>0?`, ${n(s.mortYrs)} years left on the mortgage`:""}. Car payment ${money(n(s.car))}/month. Other must-pay bills ${money(n(s.other))}/month.`);
   if(c.debts.length) me.push("Debts: "+c.debts.map(d=>`${DEBT_TYPES[d.type]||"debt"} ${money(n(d.balance))} at ${n(d.rate)}%, minimum ${money(n(d.min))}/month`).join("; ")+".");
   else me.push("Debts: none besides housing and car.");
   me.push(`Cash in savings/checking: ${money(c.cash)}. Retirement account balance: ${money(n(s.rbal))}.`);
