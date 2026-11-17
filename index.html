@@ -624,7 +624,7 @@ function spouseF(a){ a=Math.min(67,Math.max(62,a)); const m=(67-a)*12; return 1-
 function piaFrom(a){ const B1=RULES.ss.bend1, B2=RULES.ss.bend2; return .9*Math.min(a,B1)+.32*Math.max(0,Math.min(a,B2)-B1)+.15*Math.max(0,a-B2); }
 
 /* the household if you stop working at age R (today's dollars). Both partners stop the same year; Social Security claimed then (62 at the earliest). */
-function retireAt(s, c, R, addPct=0){
+function retireAt(s, c, R, addPct=0, extraBal=0){
   const age = n(s.age), yrs = Math.max(0, R-age);
   const ownPIA = piaFrom(Math.min(c.m.base, RULES.fed.ssWageBase)/12 * Math.min(35, n(s.years)+yrs-ptLost(s,yrs))/35);
   const draw = R>=65 ? RULES.drawRate : RULES.drawRate - .002*(65-R);
@@ -633,14 +633,15 @@ function retireAt(s, c, R, addPct=0){
   let mt = 0; if(c.terms && c.terms!=="unsure") mt = c.m.base*c.terms.pct/100*Math.min(p,c.terms.upto)/100;
   const yearly = (s.plan==="yes" ? c.m.base*p/100 : c.m.base*addPct/100) + mt;
   for(let y=0;y<yrs;y++) bal = bal*(1+RULES.realReturn) + yearly*ptF(s,y);
+  const projBal = bal; bal += extraBal; let exP = 0; if(bal<0){ exP = bal; bal = 0; }
   const sav = bal*draw/12;
-  let ssOwn = ownPIA*claimF(R), ssP = 0, psav = 0, ppen = 0, pa = null;
+  let ssOwn = ownPIA*claimF(R), ssP = 0, psav = 0, pbal = 0, ppen = 0, pa = null;
   if(c.partner){
     pa = (n(s.pAge)||age) + (R-age);
     ssP = c.pPIA*claimF(pa);
     if(c.married){ ssOwn = Math.max(ssOwn, .5*c.pPIA*spouseF(R)); ssP = Math.max(ssP, .5*ownPIA*spouseF(pa)); }
     let pb = n(s.pSavings); for(let y=0;y<yrs;y++) pb = pb*(1+RULES.realReturn) + n(s.pSaveYear);
-    psav = pb*draw/12; ppen = n(s.pPension)*(s.pPenCola==="no" ? RULES.flatPension : 1);
+    pbal = pb; pb = Math.max(0, pb + exP); psav = pb*draw/12; ppen = n(s.pPension)*(s.pPenCola==="no" ? RULES.flatPension : 1);
   }
   const pen = n(s.pension)*(s.penCola==="no" ? RULES.flatPension : 1);
   const lump = lumpAt(s, yrs)*draw/12, oth = oiRet(s);   // not taxed: inherited money and support are not income; rent entered after tax
@@ -657,7 +658,7 @@ function retireAt(s, c, R, addPct=0){
   const need = c.need + health + mortAdd;
   const net = gross - tax;
   return {R, pa, gross, tax, net, need, health, pre65, mortAdd, short: Math.max(0, need-net), covered: net>=need,
-          ssOwn, ssP, sav, psav, pen, ppen, lump, oth};
+          ssOwn, ssP, sav, psav, pen, ppen, lump, oth, projBal, pbal};
 }
 function retirePlan(s, c){
   const age = n(s.age);
@@ -683,6 +684,15 @@ function retirePlan(s, c){
       cover70: r70.need>0 ? Math.round(r70.net/r70.need*100) : 0, covered70: r70.covered, combo };
   }
   return {rows, earliest: first ? first.R : null, fix, levers};
+}
+
+/* the finish line: savings needed by age R (today's dollars) for income to cover spending, and what current saving gets you to */
+function finishLine(s, c, R){
+  const r = retireAt(s, c, R), have = r.projBal + r.pbal;
+  if(retireAt(s, c, R, 0, -have).covered) return {R, target: 0, have, need0: true};
+  let lo = -have, hi = Math.max(1e5, 4*(r.need*12/RULES.drawRate));
+  for(let i=0;i<60;i++){ const m=(lo+hi)/2; if(retireAt(s,c,R,0,m).covered) hi=m; else lo=m; }
+  return {R, target: have + hi, have, need0: false};
 }
 
 /* yearly tax in retirement (today's dollars, current law). ss = Social Security, other = pensions + pre-tax withdrawals */
@@ -1251,6 +1261,10 @@ function render(){
       <div class="row total"><span>Spending at ${ra.R}</span><span>${money(ra.need)}</span></div>
     </div>`;
   const per1 = retireAt(s,c,ra.R,1).net - ra.net;
+  const fl = finishLine(s, c, ra.R), rnd = v => money(Math.round(v/5000)*5000);
+  const flPct = fl.target>0 ? Math.min(100, Math.round(fl.have/fl.target*100)) : 100;
+  const flLine = fl.need0 ? `<p><b>Your finish line at ${ra.R}:</b> Social Security${ra.pen+ra.ppen>0?" and pensions":""} alone would cover your spending. Savings are extra cushion.</p>`
+    : `<p><b>Your finish line at ${ra.R}:</b> about <b class="num">${rnd(fl.target)}</b> saved${c.partner&&ra.pbal>0?" between you":""}, in today's dollars. At your current saving you'd have about <b class="num">${rnd(fl.have)}</b> by then: ${flPct>=100?"you'd be past it":`about ${flPct}% of the way`}.</p>`;
   const chips = rp.rows.map(r=>`<button type="button" class="agechip ${r.covered?"ok":"no"} ${r.R===ra.R?"sel":""}" data-retage="${r.R}" aria-pressed="${r.R===ra.R}"><b>${r.R}</b><span>${r.covered?"✓":money(-r.short).replace("−","−")}</span></button>`).join("");
   h.push(`<details class="fold" data-fold="ret"><summary><span class="ft" id="h-ret">Your retirement</span><span class="fs">${summaryLine}</span></summary><div class="fb">
     <div class="money">${headline}.</div>
@@ -1263,6 +1277,7 @@ function render(){
     <p>If ${who==="you"?"you stop":"you both stop"} working at ${ra.R}, in today's dollars, ${who} would have about:</p>
     <div class="big num">${money(total)}<span style="font-size:1rem;font-weight:600"> a month after tax</span></div>
     ${verdict}
+    ${flLine}
     <p>Each 1% more of your pay saved adds about <b class="num">${money(per1)} a month</b> after tax at ${ra.R}.</p>
     <details><summary>How this is figured</summary><div style="margin-top:10px;display:flex;flex-direction:column;gap:10px">
     <div style="position:relative;padding-top:18px">
